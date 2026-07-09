@@ -1,0 +1,21 @@
+{
+  "name": "craft-pass",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "install:all": "node scripts/install-all.mjs",
+    "ci:all": "node scripts/install-all.mjs --ci",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend run dev",
+    "setup": "node scripts/easy-deploy.mjs",
+    "deploy": "npm run build && npm --prefix backend run db:migrate:deploy",
+    "start": "node scripts/start.mjs",
+    "start:server": "npm --prefix backend start",
+    "test": "npm --prefix backend test",
+    "typecheck": "npm --prefix frontend run typecheck && npm --prefix backend run typecheck",
+    "build": "npm --prefix frontend run build && npm --prefix backend run build"
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  }
+}

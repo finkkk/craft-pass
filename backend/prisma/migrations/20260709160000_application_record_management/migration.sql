@@ -1,0 +1,3 @@
+-- SQLite stores Prisma enum values as TEXT, so adding new AdminAction values
+-- does not require a table rebuild. This migration intentionally records the
+-- schema milestone without changing existing data.

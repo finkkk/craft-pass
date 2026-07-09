@@ -141,3 +141,8 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Craft Pass runtime data
+backend/data/*
+!backend/data/.gitkeep
+backend/src/generated/prisma/

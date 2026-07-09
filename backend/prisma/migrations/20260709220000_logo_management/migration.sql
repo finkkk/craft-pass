@@ -1,0 +1,2 @@
+-- SQLite stores Prisma enum values as TEXT. Adding UPDATE_LOGO to the
+-- AdminAction enum does not require rebuilding the admin_logs table.

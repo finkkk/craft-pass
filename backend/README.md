@@ -78,7 +78,7 @@ POST /api/admin/applications/:id/retry-rcon
 
 申请接口会在后端完成校验、判分、协议版本检查、活跃申请去重和数据保存。正确答案不会通过公开接口返回。
 
-管理员可以通过 `/admin/content` 修改服规、协议版本、签署声明、合格分数和单选题题库。配置保存在 `data/content-config.json`；不存在该文件时自动使用内置默认内容。
+管理员可以通过 `/admin/content` 修改玩家端界面文案、服规、协议版本、签署声明、合格分数和单选题题库。配置保存在 `data/content-config.json`；不存在该文件时自动使用内置默认内容。
 
 ## 创建首个管理员
 

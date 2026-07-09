@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import type { Quiz } from '../../types/application';
+import type { Quiz, UiContent } from '../../types/application';
 
 interface QuizPageProps {
   quiz: Quiz;
+  copy: UiContent['quiz'];
   initialAnswers: Record<string, string>;
   submitting: boolean;
   onBack: () => void;
@@ -11,6 +12,7 @@ interface QuizPageProps {
 
 export function QuizPage({
   quiz,
+  copy,
   initialAnswers,
   submitting,
   onBack,
@@ -55,15 +57,15 @@ export function QuizPage({
   return (
     <section className="quiz-layout">
       <aside className="quiz-sidebar">
-        <p className="eyebrow">STEP 03 · QUIZ</p>
-        <h1>规则理解测试</h1>
-        <p>每题只有一个正确答案。正确答案不会在提交后公开显示。</p>
+        <p className="eyebrow">{copy.eyebrow}</p>
+        <h1>{copy.title}</h1>
+        <p>{copy.intro}</p>
 
         <div className="score-rule">
           <span>{quiz.passingScore}</span>
           <p>
-            <strong>合格分数</strong>
-            满分 100 分
+            <strong>{copy.passingScoreLabel}</strong>
+            {copy.fullScoreLabel}
           </p>
         </div>
 
@@ -87,7 +89,8 @@ export function QuizPage({
         </div>
 
         <p className="answered-count">
-          已完成 <strong>{answeredCount}</strong> / {quiz.questionCount}
+          {copy.answeredCountLabel}{' '}
+          <strong>{answeredCount}</strong> / {quiz.questionCount}
         </p>
       </aside>
 
@@ -148,7 +151,7 @@ export function QuizPage({
                 : () => setCurrentIndex((index) => index - 1)
             }
           >
-            ← {currentIndex === 0 ? '返回规则' : '上一题'}
+            ← {currentIndex === 0 ? copy.backRulesButton : copy.previousButton}
           </button>
           <button
             className="primary-button"
@@ -157,12 +160,15 @@ export function QuizPage({
             onClick={() => void handleNext()}
           >
             {submitting
-              ? '正在提交…'
+              ? copy.submittingButton
               : isLastQuestion
                 ? allQuestionsAnswered
-                  ? '提交全部答案'
-                  : `还有 ${quiz.questionCount - answeredCount} 题未答`
-                : '下一题'}
+                  ? copy.submitButton
+                  : copy.unansweredButton.replace(
+                      '{count}',
+                      String(quiz.questionCount - answeredCount),
+                    )
+                : copy.nextButton}
             <span aria-hidden="true">→</span>
           </button>
         </div>

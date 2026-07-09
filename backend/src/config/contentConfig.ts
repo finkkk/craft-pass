@@ -12,6 +12,7 @@ import { env } from './env.js';
 import { passingScore, quizQuestions } from './quiz.js';
 import {
   contentConfigSchema,
+  defaultUiContent,
   type ContentConfig,
 } from '../schemas/content.js';
 
@@ -24,6 +25,7 @@ const dataDirectory = env.runtimeDataDir
 const contentConfigPath = resolve(dataDirectory, 'content-config.json');
 
 const defaultContent: ContentConfig = contentConfigSchema.parse({
+  ui: defaultUiContent,
   agreement,
   quiz: {
     passingScore,

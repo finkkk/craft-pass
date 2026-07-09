@@ -1,15 +1,17 @@
+import type { UiContent } from '../types/application';
+
 interface StepIndicatorProps {
   currentStep: 'identity' | 'agreement' | 'quiz' | 'result';
+  labels: UiContent['navigation'];
 }
 
-const steps = [
-  { id: 'identity', label: '填写资料' },
-  { id: 'agreement', label: '阅读规则' },
-  { id: 'quiz', label: '规则测试' },
-  { id: 'result', label: '提交结果' },
-] as const;
-
-export function StepIndicator({ currentStep }: StepIndicatorProps) {
+export function StepIndicator({ currentStep, labels }: StepIndicatorProps) {
+  const steps = [
+    { id: 'identity', label: labels.stepIdentity },
+    { id: 'agreement', label: labels.stepAgreement },
+    { id: 'quiz', label: labels.stepQuiz },
+    { id: 'result', label: labels.stepResult },
+  ] as const;
   const currentIndex = steps.findIndex((step) => step.id === currentStep);
 
   return (

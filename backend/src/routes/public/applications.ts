@@ -14,9 +14,10 @@ import { HttpError } from '../../utils/HttpError.js';
 export const applicationsRouter = Router();
 
 applicationsRouter.get('/agreement', (_request, response) => {
-  const { agreement } = getContentConfig();
+  const { agreement, ui } = getContentConfig();
   response.json({
     agreement,
+    ui,
   });
 });
 

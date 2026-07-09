@@ -47,6 +47,7 @@ export interface AdminStatistics {
 }
 
 export interface AdminContentConfig {
+  ui: import('./application').UiContent;
   agreement: {
     version: string;
     title: string;

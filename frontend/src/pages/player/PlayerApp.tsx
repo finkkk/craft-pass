@@ -13,6 +13,7 @@ import type {
   Agreement,
   ApplicationResult,
   Quiz,
+  UiContent,
 } from '../../types/application';
 import type { PublicSiteConfig } from '../../types/setup';
 import { BrandMark } from '../../components/BrandMark';
@@ -31,6 +32,7 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
     minecraftId: '',
   });
   const [agreement, setAgreement] = useState<Agreement | null>(null);
+  const [ui, setUi] = useState<UiContent | null>(null);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -44,13 +46,14 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
 
     async function loadApplicationConfig() {
       try {
-        const [loadedAgreement, loadedQuiz] = await Promise.all([
+        const [loadedContent, loadedQuiz] = await Promise.all([
           getAgreement(),
           getQuiz(),
         ]);
 
         if (!cancelled) {
-          setAgreement(loadedAgreement);
+          setAgreement(loadedContent.agreement);
+          setUi(loadedContent.ui);
           setQuiz(loadedQuiz);
         }
       } catch (error) {
@@ -142,12 +145,14 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
         </a>
         <span className="system-status">
           <i aria-hidden="true" />
-          审核系统在线
+          {ui?.navigation.systemStatus ?? '审核系统在线'}
         </span>
       </header>
 
       <main className="page-frame">
-        <StepIndicator currentStep={step} />
+        {ui ? (
+          <StepIndicator currentStep={step} labels={ui.navigation} />
+        ) : null}
 
         {errorMessage ? (
           <div className="error-banner" role="alert">
@@ -159,19 +164,21 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
           </div>
         ) : null}
 
-        {step === 'identity' ? (
+        {step === 'identity' && ui ? (
           <ApplyPage
             initialValue={identity}
             configLoading={loadingConfig}
             questionCount={quiz?.questionCount}
             passingScore={quiz?.passingScore}
+            copy={ui.apply}
             onContinue={continueToAgreement}
           />
         ) : null}
 
-        {step === 'agreement' && agreement ? (
+        {step === 'agreement' && agreement && ui ? (
           <AgreementPage
             agreement={agreement}
+            copy={ui.agreement}
             accepted={agreementAccepted}
             onAcceptedChange={setAgreementAccepted}
             onBack={() => setStep('identity')}
@@ -179,9 +186,10 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
           />
         ) : null}
 
-        {step === 'quiz' && quiz ? (
+        {step === 'quiz' && quiz && ui ? (
           <QuizPage
             quiz={quiz}
+            copy={ui.quiz}
             initialAnswers={answers}
             submitting={submitting}
             onBack={() => setStep('agreement')}
@@ -189,17 +197,18 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
           />
         ) : null}
 
-        {step === 'result' && result ? (
+        {step === 'result' && result && ui ? (
           <ResultPage
             result={result}
+            copy={ui.result}
             onReadAgain={restartFromAgreement}
           />
         ) : null}
       </main>
 
       <footer className="site-footer">
-        <p>Craft Pass · 公平、友善、长期生存</p>
-        <p>请勿在公共场合分享答题内容</p>
+        <p>{ui?.navigation.footerPrimary ?? site.name}</p>
+        <p>{ui?.navigation.footerSecondary ?? site.subtitle}</p>
       </footer>
     </div>
   );

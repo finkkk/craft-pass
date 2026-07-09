@@ -89,7 +89,7 @@ app-secret.key
 
 `runtime-config.json` 中的 RCON 密码依赖 `app-secret.key` 解密。只备份数据库而丢失密钥，将无法恢复 RCON 密码。
 
-`content-config.json` 保存后台自定义的服规、签署声明和题库，丢失后系统会回退到内置默认内容。
+`content-config.json` 保存后台自定义的玩家端界面文案、服规、签署声明和题库，丢失后系统会回退到内置默认内容。
 
 生产环境也可以通过 `APP_SECRET` 环境变量提供至少 32 位的密钥材料。使用该方式时必须安全备份环境变量，并避免同时在多台实例上配置不同值。
 

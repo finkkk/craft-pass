@@ -8,20 +8,29 @@ export function BrandMark({
   logoUrl?: string;
 }) {
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     setFailed(false);
+    setLoaded(false);
   }, [logoUrl]);
 
   return (
-    <span className={className} aria-hidden="true">
+    <span
+      className={`${className}${loaded && !failed ? ' has-logo-image' : ''}`}
+      aria-hidden="true"
+    >
       {failed ? (
         'CP'
       ) : (
         <img
           src={logoUrl}
           alt=""
-          onError={() => setFailed(true)}
+          onLoad={() => setLoaded(true)}
+          onError={() => {
+            setFailed(true);
+            setLoaded(false);
+          }}
         />
       )}
     </span>

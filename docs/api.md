@@ -8,7 +8,7 @@
 GET /api/agreement
 ```
 
-返回当前协议版本、规则章节与签署声明。玩家提交申请时必须原样携带当前 `agreementVersion`。
+返回当前协议版本、规则章节、签署声明与玩家端界面文案 `ui`。玩家提交申请时必须原样携带当前 `agreementVersion`。
 
 ## 获取答题题目
 
@@ -104,7 +104,7 @@ POST /api/admin/applications/:id/retry-rcon
 
 统计接口返回累计申请、近 7 天申请、答题通过率、已审核申请通过率、RCON 成功率、状态分布和最近 14 天每日趋势。没有已完成 RCON 尝试时，`rconSuccessRate` 返回 `null`。
 
-内容配置接口用于读取和保存服规章节、签署声明、协议版本、合格分数和单选题题库。管理员响应包含正确答案；公开的 `/api/quiz` 会主动移除 `correctOptionId`。保存后的题库立即用于后端校验与判分。
+内容配置接口用于读取和保存玩家端界面文案、服规章节、签署声明、协议版本、合格分数和单选题题库。管理员响应包含正确答案；公开的 `/api/quiz` 会主动移除 `correctOptionId`。保存后的题库立即用于后端校验与判分。
 
 Logo 接口支持上传不超过 400KB 的 PNG、JPEG 或 WebP 图片，也可以删除自定义图片并恢复默认 CP 图标。公开图片通过 `GET /api/site-logo` 提供。
 

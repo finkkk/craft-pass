@@ -1,7 +1,8 @@
-import type { Agreement } from '../../types/application';
+import type { Agreement, UiContent } from '../../types/application';
 
 interface AgreementPageProps {
   agreement: Agreement;
+  copy: UiContent['agreement'];
   accepted: boolean;
   onAcceptedChange: (accepted: boolean) => void;
   onBack: () => void;
@@ -10,6 +11,7 @@ interface AgreementPageProps {
 
 export function AgreementPage({
   agreement,
+  copy,
   accepted,
   onAcceptedChange,
   onBack,
@@ -19,16 +21,18 @@ export function AgreementPage({
     <section className="content-card agreement-page">
       <header className="content-heading">
         <div>
-          <p className="eyebrow">STEP 02 · AGREEMENT</p>
+          <p className="eyebrow">{copy.eyebrow}</p>
           <h1>{agreement.title}</h1>
-          <p>请完整阅读以下内容。规则不是装饰，而是我们共同维护世界的约定。</p>
+          <p>{copy.intro}</p>
         </div>
-        <span className="version-badge">版本 {agreement.version}</span>
+        <span className="version-badge">
+          {copy.versionPrefix} {agreement.version}
+        </span>
       </header>
 
       <div className="agreement-notice">
-        <strong>阅读提示</strong>
-        <p>答题内容全部来自以下规则。正式提交后，签署版本与时间将被保存。</p>
+        <strong>{copy.noticeTitle}</strong>
+        <p>{copy.noticeBody}</p>
       </div>
 
       <div className="rules-list">
@@ -48,7 +52,7 @@ export function AgreementPage({
       </div>
 
       <div className="signature-box">
-        <h2>签署确认</h2>
+        <h2>{copy.signatureTitle}</h2>
         <ul>
           {agreement.signatureStatements.map((statement) => (
             <li key={statement}>{statement}</li>
@@ -61,13 +65,13 @@ export function AgreementPage({
             onChange={(event) => onAcceptedChange(event.target.checked)}
           />
           <span aria-hidden="true" />
-          <strong>我已完整阅读并同意遵守以上服务器规则</strong>
+          <strong>{copy.acceptanceLabel}</strong>
         </label>
       </div>
 
       <div className="page-actions">
         <button className="secondary-button" type="button" onClick={onBack}>
-          ← 返回修改资料
+          ← {copy.backButton}
         </button>
         <button
           className="primary-button"
@@ -75,7 +79,7 @@ export function AgreementPage({
           disabled={!accepted}
           onClick={onContinue}
         >
-          开始规则测试
+          {copy.continueButton}
           <span aria-hidden="true">→</span>
         </button>
       </div>

@@ -3,6 +3,7 @@ import type {
   ApplicationResult,
   ApplicationSubmission,
   Quiz,
+  UiContent,
 } from '../types/application';
 
 interface ApiErrorBody {
@@ -13,8 +14,7 @@ interface ApiErrorBody {
 }
 
 export async function getAgreement() {
-  const response = await request<{ agreement: Agreement }>('/api/agreement');
-  return response.agreement;
+  return request<{ agreement: Agreement; ui: UiContent }>('/api/agreement');
 }
 
 export function getQuiz() {

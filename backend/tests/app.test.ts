@@ -197,6 +197,8 @@ test('协议接口返回当前版本和签署声明', async () => {
   assert.equal(body.agreement.version, agreement.version);
   assert.ok(body.agreement.sections.length > 0);
   assert.ok(body.agreement.signatureStatements.length > 0);
+  assert.equal(body.ui.agreement.continueButton, '开始规则测试');
+  assert.equal(body.ui.navigation.stepAgreement, '阅读规则');
 });
 
 test('题目接口不泄露正确答案', async () => {
@@ -570,6 +572,7 @@ test('管理员可以自定义服规与题库且公开接口不会泄露答案',
 
     assert.equal(updateResponse.status, 200);
     assert.equal(updateBody.content.agreement.version, 'custom-test-v2');
+    assert.equal(updateBody.content.ui.apply.qqLabel, 'QQ 号');
     assert.equal(
       updateBody.content.quiz.questions[0].correctOptionId,
       'B',
@@ -578,6 +581,7 @@ test('管理员可以自定义服规与题库且公开接口不会泄露答案',
     const agreementResponse = await fetch(`${baseUrl}/api/agreement`);
     const agreementBody = await agreementResponse.json();
     assert.equal(agreementBody.agreement.title, '自定义测试服规');
+    assert.equal(agreementBody.ui.apply.continueButton, '下一步：阅读服务器规则');
 
     const quizResponse = await fetch(`${baseUrl}/api/quiz`);
     const quizBody = await quizResponse.json();

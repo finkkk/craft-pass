@@ -1,11 +1,12 @@
-import type { ApplicationResult } from '../../types/application';
+import type { ApplicationResult, UiContent } from '../../types/application';
 
 interface ResultPageProps {
   result: ApplicationResult;
+  copy: UiContent['result'];
   onReadAgain: () => void;
 }
 
-export function ResultPage({ result, onReadAgain }: ResultPageProps) {
+export function ResultPage({ result, copy, onReadAgain }: ResultPageProps) {
   const passed = result.passed;
 
   return (
@@ -13,12 +14,10 @@ export function ResultPage({ result, onReadAgain }: ResultPageProps) {
       <div className="result-symbol" aria-hidden="true">
         {passed ? '✓' : '×'}
       </div>
-      <p className="eyebrow">APPLICATION RESULT</p>
-      <h1>{passed ? '申请已进入审核队列' : '本次测试未通过'}</h1>
+      <p className="eyebrow">{copy.eyebrow}</p>
+      <h1>{passed ? copy.passedTitle : copy.failedTitle}</h1>
       <p className="result-lead">
-        {passed
-          ? '你已完成规则签署与测试。管理员审核通过后，会将你的 Minecraft ID 加入白名单。'
-          : `你的分数未达到合格线，请重新阅读规则后再次尝试。系统不会显示具体错题答案。`}
+        {passed ? copy.passedDescription : copy.failedDescription}
       </p>
 
       <div className="score-display">
@@ -28,19 +27,19 @@ export function ResultPage({ result, onReadAgain }: ResultPageProps) {
 
       <dl className="result-details">
         <div>
-          <dt>Minecraft ID</dt>
+          <dt>{copy.minecraftLabel}</dt>
           <dd>{result.minecraftId}</dd>
         </div>
         <div>
-          <dt>QQ 号</dt>
+          <dt>{copy.qqLabel}</dt>
           <dd>{result.qqNumber}</dd>
         </div>
         <div>
-          <dt>申请状态</dt>
-          <dd>{passed ? '等待管理员审核' : '答题未通过'}</dd>
+          <dt>{copy.statusLabel}</dt>
+          <dd>{passed ? copy.pendingStatus : copy.failedStatus}</dd>
         </div>
         <div>
-          <dt>申请编号</dt>
+          <dt>{copy.applicationIdLabel}</dt>
           <dd className="application-id">{result.applicationId}</dd>
         </div>
       </dl>
@@ -48,7 +47,7 @@ export function ResultPage({ result, onReadAgain }: ResultPageProps) {
       {passed ? (
         <div className="result-notice">
           <span aria-hidden="true">i</span>
-          请妥善保存申请编号，无需重复提交。审核期间可留意管理员的 QQ 消息。
+          {copy.notice}
         </div>
       ) : (
         <button
@@ -56,7 +55,7 @@ export function ResultPage({ result, onReadAgain }: ResultPageProps) {
           type="button"
           onClick={onReadAgain}
         >
-          重新阅读服务器规则
+          {copy.retryButton}
           <span aria-hidden="true">↻</span>
         </button>
       )}

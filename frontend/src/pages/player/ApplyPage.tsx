@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import type { UiContent } from '../../types/application';
 
 interface Identity {
   qqNumber: string;
@@ -10,6 +11,7 @@ interface ApplyPageProps {
   configLoading: boolean;
   questionCount?: number;
   passingScore?: number;
+  copy: UiContent['apply'];
   onContinue: (identity: Identity) => void;
 }
 
@@ -18,6 +20,7 @@ export function ApplyPage({
   configLoading,
   questionCount,
   passingScore,
+  copy,
   onContinue,
 }: ApplyPageProps) {
   const [formValue, setFormValue] = useState(initialValue);
@@ -29,12 +32,11 @@ export function ApplyPage({
     const nextErrors: Partial<Identity> = {};
 
     if (!/^[1-9][0-9]{4,11}$/.test(formValue.qqNumber)) {
-      nextErrors.qqNumber = '请输入 5 至 12 位、且不以 0 开头的 QQ 号';
+      nextErrors.qqNumber = copy.qqInvalidMessage;
     }
 
     if (!/^[A-Za-z0-9_]{3,16}$/.test(formValue.minecraftId)) {
-      nextErrors.minecraftId =
-        '请输入 3 至 16 位英文、数字或下划线组成的正版 ID';
+      nextErrors.minecraftId = copy.minecraftInvalidMessage;
     }
 
     setErrors(nextErrors);
@@ -47,38 +49,34 @@ export function ApplyPage({
   return (
     <section className="split-layout">
       <div className="intro-panel">
-        <p className="eyebrow">WELCOME, TRAVELER</p>
-        <h1>
-          先读规则，
-          <br />
-          再进入世界。
-        </h1>
-        <p className="intro-copy">
-          这是服务器白名单的唯一申请入口。请使用真实信息完成规则阅读和测试，审核通过后系统会自动处理入服资格。
-        </p>
+        <p className="eyebrow">{copy.eyebrow}</p>
+        <h1>{copy.title}</h1>
+        <p className="intro-copy">{copy.intro}</p>
 
         <div className="feature-list">
           <div>
             <span>01</span>
             <p>
-              <strong>阅读完整规则</strong>
-              了解生存世界的共同边界
+              <strong>{copy.featureOneTitle}</strong>
+              {copy.featureOneDescription}
             </p>
           </div>
           <div>
             <span>02</span>
             <p>
-              <strong>完成规则测试</strong>
+              <strong>{copy.featureTwoTitle}</strong>
               {questionCount && passingScore
-                ? `${questionCount} 道单选题，达到 ${passingScore} 分合格`
-                : '题目与合格线由服务器管理组配置'}
+                ? copy.featureTwoConfigured
+                    .replace('{count}', String(questionCount))
+                    .replace('{score}', String(passingScore))
+                : copy.featureTwoDescription}
             </p>
           </div>
           <div>
             <span>03</span>
             <p>
-              <strong>等待人工审核</strong>
-              管理员确认后加入服务器白名单
+              <strong>{copy.featureThreeTitle}</strong>
+              {copy.featureThreeDescription}
             </p>
           </div>
         </div>
@@ -88,15 +86,15 @@ export function ApplyPage({
         <div className="card-heading">
           <span className="card-icon" aria-hidden="true">⌁</span>
           <div>
-            <p>STEP 01</p>
-            <h2>填写申请资料</h2>
+            <p>{copy.stepLabel}</p>
+            <h2>{copy.formTitle}</h2>
           </div>
         </div>
 
         <form onSubmit={handleSubmit} noValidate>
           <label className="field-label" htmlFor="qq-number">
-            QQ 号
-            <span>用于管理员联系与身份确认</span>
+            {copy.qqLabel}
+            <span>{copy.qqHelp}</span>
           </label>
           <input
             id="qq-number"
@@ -104,7 +102,7 @@ export function ApplyPage({
             className={errors.qqNumber ? 'field-error' : ''}
             inputMode="numeric"
             autoComplete="off"
-            placeholder="例如：123456789"
+            placeholder={copy.qqPlaceholder}
             value={formValue.qqNumber}
             onChange={(event) =>
               setFormValue((current) => ({
@@ -119,15 +117,15 @@ export function ApplyPage({
           ) : null}
 
           <label className="field-label" htmlFor="minecraft-id">
-            Minecraft ID
-            <span>区分大小写，请与游戏内 ID 完全一致</span>
+            {copy.minecraftLabel}
+            <span>{copy.minecraftHelp}</span>
           </label>
           <input
             id="minecraft-id"
             name="minecraftId"
             className={errors.minecraftId ? 'field-error' : ''}
             autoComplete="off"
-            placeholder="例如：Steve_01"
+            placeholder={copy.minecraftPlaceholder}
             value={formValue.minecraftId}
             onChange={(event) =>
               setFormValue((current) => ({
@@ -150,14 +148,14 @@ export function ApplyPage({
             type="submit"
             disabled={configLoading}
           >
-            {configLoading ? '正在连接服务器…' : '下一步：阅读服务器规则'}
+            {configLoading ? copy.loadingButton : copy.continueButton}
             <span aria-hidden="true">→</span>
           </button>
         </form>
 
         <p className="privacy-note">
           <span aria-hidden="true">◆</span>
-          提交时将记录 IP、浏览器信息和协议版本，仅用于审核与安全追溯。
+          {copy.privacyNote}
         </p>
       </div>
     </section>

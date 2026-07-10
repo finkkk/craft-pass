@@ -74,8 +74,17 @@ export interface AdminContentConfig {
 
 export interface RconStatus {
   enabled: boolean;
+  connected: boolean;
+  errorMessage: string | null;
   whitelistAddCommandConfigured: boolean;
   reloadAfterAdd: boolean;
+  customCommandsEnabled: boolean;
+}
+
+export interface RconCommandResult {
+  command: string;
+  response: string;
+  executedAt: string;
 }
 
 export interface AdminLogoStatus {
@@ -86,6 +95,11 @@ export interface AdminLogoStatus {
 export interface ReviewActionResult {
   applicationId: string;
   status: ApplicationStatus;
+}
+
+export interface FactoryResetResult {
+  setupRequired: true;
+  setupToken: string;
 }
 
 export interface AdminSettings {
@@ -102,11 +116,22 @@ export interface AdminSettings {
     timeoutMs: number;
     whitelistAddCommand: string;
     whitelistReloadCommand: string;
+    customCommandsEnabled: boolean;
+    blockedCommands: string[];
+  };
+  application: {
+    submissionsEnabled: boolean;
+    quizFailCooldownMinutes: number;
+    rateLimitWindowMinutes: number;
+    maxSubmissionsPerIp: number;
+    maxSubmissionsPerQq: number;
+    maxSubmissionsPerMinecraftId: number;
   };
 }
 
 export interface UpdateAdminSettings {
   site: AdminSettings['site'];
+  application: AdminSettings['application'];
   rcon: Omit<AdminSettings['rcon'], 'passwordConfigured'> & {
     password?: string;
   };

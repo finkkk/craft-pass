@@ -9,6 +9,7 @@ interface Identity {
 interface ApplyPageProps {
   initialValue: Identity;
   configLoading: boolean;
+  submissionsEnabled: boolean;
   questionCount?: number;
   passingScore?: number;
   copy: UiContent['apply'];
@@ -18,6 +19,7 @@ interface ApplyPageProps {
 export function ApplyPage({
   initialValue,
   configLoading,
+  submissionsEnabled,
   questionCount,
   passingScore,
   copy,
@@ -45,6 +47,8 @@ export function ApplyPage({
       onContinue(formValue);
     }
   }
+
+  const submitDisabled = configLoading || !submissionsEnabled;
 
   return (
     <section className="split-layout">
@@ -146,16 +150,22 @@ export function ApplyPage({
           <button
             className="primary-button full-width"
             type="submit"
-            disabled={configLoading}
+            disabled={submitDisabled}
           >
-            {configLoading ? copy.loadingButton : copy.continueButton}
+            {configLoading
+              ? copy.loadingButton
+              : submissionsEnabled
+                ? copy.continueButton
+                : '当前暂未开放申请'}
             <span aria-hidden="true">→</span>
           </button>
         </form>
 
         <p className="privacy-note">
           <span aria-hidden="true">◆</span>
-          {copy.privacyNote}
+          {submissionsEnabled
+            ? copy.privacyNote
+            : '服务器当前暂停接收新的入服申请，请稍后再回来查看。'}
         </p>
       </div>
     </section>

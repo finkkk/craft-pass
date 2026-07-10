@@ -14,7 +14,11 @@ interface ApiErrorBody {
 }
 
 export async function getAgreement() {
-  return request<{ agreement: Agreement; ui: UiContent }>('/api/agreement');
+  return request<{
+    agreement: Agreement;
+    ui: UiContent;
+    application: { submissionsEnabled: boolean };
+  }>('/api/agreement');
 }
 
 export function getQuiz() {

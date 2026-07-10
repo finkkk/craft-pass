@@ -12,8 +12,8 @@ export function SetupApp({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
-  const [form, setForm] = useState({
-    setupToken: '',
+  const [form, setForm] = useState(() => ({
+    setupToken: sessionStorage.getItem('craft_pass_setup_token') ?? '',
     siteName: 'Craft Pass',
     siteSubtitle: '服务器入服审核',
     adminUsername: 'admin',
@@ -25,7 +25,7 @@ export function SetupApp({
     rconTimeoutMs: '5000',
     whitelistAddCommand: 'whitelist add {minecraftId}',
     whitelistReloadCommand: '',
-  });
+  }));
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -72,6 +72,7 @@ export function SetupApp({
         adminPassword: '',
         rconPassword: '',
       }));
+      sessionStorage.removeItem('craft_pass_setup_token');
       setPasswordConfirmation('');
       setCompleted(true);
     } catch (setupError) {

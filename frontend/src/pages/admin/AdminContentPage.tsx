@@ -3,7 +3,7 @@ import {
   AdminApiError,
   getAdminContent,
   getAdminSession,
-  updateAdminContent,
+  updateAdminRulesQuizContent,
 } from '../../api/admin';
 import type {
   AdminContentConfig,
@@ -45,7 +45,13 @@ export function AdminContentPage() {
     setMessage(null);
     setError(null);
     try {
-      setContent(await updateAdminContent(normalizeContent(content)));
+      const normalized = normalizeContent(content);
+      setContent(
+        await updateAdminRulesQuizContent({
+          agreement: normalized.agreement,
+          quiz: normalized.quiz,
+        }),
+      );
       setMessage('服规与题库已保存，玩家刷新页面后立即生效。');
     } catch (saveError) {
       setError(getMessage(saveError));
@@ -103,8 +109,6 @@ export function AdminContentPage() {
           <div className="settings-loading">正在读取服规与题库…</div>
         ) : (
           <form className="content-form" onSubmit={handleSubmit}>
-            <UiCopyEditor content={content} onChange={setContent} />
-
             <section className="content-panel">
               <header>
                 <div>
@@ -538,7 +542,7 @@ const uiFieldGroups = [
   },
 ] as const;
 
-function UiCopyEditor({
+export function UiCopyEditor({
   content,
   onChange,
 }: {

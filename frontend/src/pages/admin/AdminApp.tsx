@@ -24,8 +24,11 @@ import type {
 import { AdminSettingsPage } from './AdminSettingsPage';
 import { AdminStatisticsPage } from './AdminStatisticsPage';
 import { AdminContentPage } from './AdminContentPage';
+import { AdminAppearancePage } from './AdminAppearancePage';
+import { AdminRconPage } from './AdminRconPage';
 import { AdminSidebar } from './AdminSidebar';
 import { BrandMark } from '../../components/BrandMark';
+import type { PublicSiteConfig } from '../../types/setup';
 
 const statusTabs: Array<{ id: ApplicationStatus; label: string }> = [
   { id: 'pending_review', label: '待审核' },
@@ -35,9 +38,9 @@ const statusTabs: Array<{ id: ApplicationStatus; label: string }> = [
   { id: 'rcon_failed', label: 'RCON 失败' },
 ];
 
-export function AdminApp() {
+export function AdminApp({ site }: { site: PublicSiteConfig }) {
   if (window.location.pathname === '/admin/login') {
-    return <AdminLoginPage />;
+    return <AdminLoginPage site={site} />;
   }
 
   if (window.location.pathname === '/admin/settings') {
@@ -52,10 +55,18 @@ export function AdminApp() {
     return <AdminContentPage />;
   }
 
+  if (window.location.pathname === '/admin/appearance') {
+    return <AdminAppearancePage />;
+  }
+
+  if (window.location.pathname === '/admin/rcon') {
+    return <AdminRconPage />;
+  }
+
   return <AdminDashboardPage />;
 }
 
-function AdminLoginPage() {
+function AdminLoginPage({ site }: { site: PublicSiteConfig }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -81,14 +92,23 @@ function AdminLoginPage() {
       <section className="admin-login-aside">
         <a className="admin-brand" href="/">
           <BrandMark className="admin-brand-mark" />
-          CRAFT PASS
+          <strong className="admin-brand-name">{site.name}</strong>
         </a>
         <div>
           <p className="eyebrow">CONTROL ROOM</p>
           <h1>让每一次准入，都有记录可循。</h1>
           <p>审核玩家申请、检查答题记录，并安全执行白名单操作。</p>
         </div>
-        <small>仅限授权管理员访问</small>
+        <div className="admin-login-footnote">
+          <small>仅限授权管理员访问</small>
+          <a
+            href="https://github.com/finkkk/craft-pass"
+            target="_blank"
+            rel="noreferrer"
+          >
+            作者 finkkk · craft-pass
+          </a>
+        </div>
       </section>
 
       <section className="admin-login-panel">
@@ -159,14 +179,13 @@ function AdminDashboardPage() {
 
   async function loadDashboard() {
     try {
-      const [session, loadedSummary, loadedRconStatus] = await Promise.all([
+      const [session, loadedSummary] = await Promise.all([
         getAdminSession(),
         getAdminSummary(),
-        getRconStatus(),
       ]);
       setAdmin(session.admin);
       setSummary(loadedSummary);
-      setRconStatus(loadedRconStatus);
+      void refreshRconStatus();
     } catch (loadError) {
       if (loadError instanceof AdminApiError && loadError.status === 401) {
         window.location.href = '/admin/login';
@@ -175,6 +194,21 @@ function AdminDashboardPage() {
       setError(getMessage(loadError));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function refreshRconStatus() {
+    try {
+      setRconStatus(await getRconStatus());
+    } catch {
+      setRconStatus({
+        enabled: false,
+        connected: false,
+        errorMessage: '无法检测 RCON 连接状态',
+        whitelistAddCommandConfigured: false,
+        reloadAfterAdd: false,
+        customCommandsEnabled: false,
+      });
     }
   }
 
@@ -223,28 +257,35 @@ function AdminDashboardPage() {
     setError(null);
 
     try {
+      const selectedId = selected.id;
+
       if (action === 'approve') {
-        await approveAdminApplication(selected.id);
+        await approveAdminApplication(selectedId);
       } else if (action === 'reject') {
-        await rejectAdminApplication(selected.id, reason ?? '');
+        await rejectAdminApplication(selectedId, reason ?? '');
       } else {
-        await retryAdminApplicationRcon(selected.id);
+        await retryAdminApplicationRcon(selectedId);
       }
 
-      const [nextSummary, nextApplications] = await Promise.all([
+      const [nextSummary, nextApplications, nextSelected] = await Promise.all([
         getAdminSummary(),
         getAdminApplications(status),
+        action === 'reject'
+          ? Promise.resolve(null)
+          : getAdminApplication(selectedId),
       ]);
       setSummary(nextSummary);
       setApplications(nextApplications);
-      setSelected(null);
+      setSelected(nextSelected);
+      void refreshRconStatus();
     } catch (actionError) {
       setError(getMessage(actionError));
-      setSelected(null);
       await Promise.all([
         getAdminSummary().then(setSummary),
         getAdminApplications(status).then(setApplications),
+        selected ? getAdminApplication(selected.id).then(setSelected) : undefined,
       ]).catch(() => undefined);
+      void refreshRconStatus();
     } finally {
       setActionLoading(false);
     }
@@ -313,10 +354,10 @@ function AdminDashboardPage() {
           </div>
           <span
             className={
-              rconStatus?.enabled ? 'rcon-online' : 'rcon-offline'
+              rconStatus?.connected ? 'rcon-online' : 'rcon-offline'
             }
           >
-            RCON {rconStatus?.enabled ? '已启用' : '未启用'}
+            RCON {rconStatus?.connected ? '连接成功' : '不可用'}
           </span>
         </header>
 
@@ -419,7 +460,7 @@ function AdminDashboardPage() {
       {selected ? (
         <ApplicationDrawer
           application={selected}
-          rconEnabled={Boolean(rconStatus?.enabled)}
+          rconEnabled={Boolean(rconStatus?.connected)}
           actionLoading={actionLoading}
           onAction={handleReviewAction}
           onUpdate={handleRecordUpdate}
@@ -620,11 +661,10 @@ function ApplicationDrawer({
                   <strong>{attempt.status}</strong>
                   <span>{formatDate(attempt.startedAt)}</span>
                 </div>
-                <p>
-                  {attempt.errorMessage ??
-                    attempt.response ??
-                    '等待服务器响应'}
-                </p>
+                <RconAttemptOutput
+                  errorMessage={attempt.errorMessage}
+                  response={attempt.response}
+                />
                 <small>操作管理员：{attempt.admin.username}</small>
               </article>
             ))}
@@ -635,7 +675,7 @@ function ApplicationDrawer({
           <section className="review-actions">
             {!rconEnabled ? (
               <p className="rcon-warning">
-                RCON 尚未在后端启用，当前不能批准申请。
+                RCON 当前不可用或连接失败，当前不能批准申请。
               </p>
             ) : null}
 
@@ -732,6 +772,43 @@ function ApplicationDrawer({
   );
 }
 
+function RconAttemptOutput({
+  errorMessage,
+  response,
+}: {
+  errorMessage: string | null;
+  response: string | null;
+}) {
+  if (errorMessage) {
+    return <p>{errorMessage}</p>;
+  }
+
+  const parsed = parseRconAttemptResponse(response);
+
+  if (!parsed) {
+    return <p>{response ?? '等待服务器响应'}</p>;
+  }
+
+  return (
+    <div className="rcon-output-block">
+      <p>
+        <span>命令</span>
+        {parsed.command}
+      </p>
+      <p>
+        <span>输出</span>
+        {parsed.response || '服务器未返回文本'}
+      </p>
+      {parsed.reloadResponse ? (
+        <p>
+          <span>刷新</span>
+          {parsed.reloadResponse}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function formatDate(value: string) {
   return new Intl.DateTimeFormat('zh-CN', {
     dateStyle: 'short',
@@ -745,4 +822,36 @@ function statusLabel(status: ApplicationStatus) {
 
 function getMessage(error: unknown) {
   return error instanceof Error ? error.message : '操作失败，请稍后重试';
+}
+
+function parseRconAttemptResponse(response: string | null) {
+  if (!response) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(response) as {
+      command?: unknown;
+      response?: unknown;
+      reloadResponse?: unknown;
+    };
+
+    if (
+      typeof parsed.command !== 'string' ||
+      typeof parsed.response !== 'string'
+    ) {
+      return null;
+    }
+
+    return {
+      command: parsed.command,
+      response: parsed.response,
+      reloadResponse:
+        typeof parsed.reloadResponse === 'string'
+          ? parsed.reloadResponse
+          : undefined,
+    };
+  } catch {
+    return null;
+  }
 }

@@ -3,6 +3,7 @@ import {
   mkdirSync,
   readFileSync,
   renameSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { resolve } from 'node:path';
@@ -52,4 +53,8 @@ export function saveContentConfig(content: ContentConfig) {
   renameSync(temporaryPath, contentConfigPath);
 
   return getContentConfig();
+}
+
+export function resetContentConfig() {
+  rmSync(contentConfigPath, { force: true });
 }

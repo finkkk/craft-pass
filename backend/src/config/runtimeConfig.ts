@@ -36,6 +36,62 @@ export interface RuntimeRconConfig {
   timeoutMs: number;
   whitelistAddCommand: string;
   whitelistReloadCommand: string | null;
+  customCommandsEnabled: boolean;
+  blockedCommands: string[];
+}
+
+export interface RuntimeApplicationConfig {
+  submissionsEnabled: boolean;
+  quizFailCooldownMinutes: number;
+  rateLimitWindowMinutes: number;
+  maxSubmissionsPerIp: number;
+  maxSubmissionsPerQq: number;
+  maxSubmissionsPerMinecraftId: number;
+}
+
+export const defaultApplicationConfig: RuntimeApplicationConfig = {
+  submissionsEnabled: true,
+  quizFailCooldownMinutes: 0,
+  rateLimitWindowMinutes: 15,
+  maxSubmissionsPerIp: 50,
+  maxSubmissionsPerQq: 20,
+  maxSubmissionsPerMinecraftId: 5,
+};
+
+export const defaultRconCommandSafety = {
+  customCommandsEnabled: true,
+  blockedCommands: ['stop', 'op', 'deop', 'ban', 'pardon', 'whitelist off'],
+};
+
+const fallbackRconConfig: RuntimeRconConfig = {
+  ...env.rcon,
+  ...defaultRconCommandSafety,
+};
+
+type StoredRconConfig = Omit<RuntimeRconConfig, 'password'> & {
+  encryptedPassword: string;
+};
+
+function normalizeRconConfig(
+  rcon: Partial<StoredRconConfig> & {
+    encryptedPassword: string;
+  },
+): StoredRconConfig {
+  return {
+    enabled: rcon.enabled ?? false,
+    host: rcon.host ?? '127.0.0.1',
+    port: rcon.port ?? 25_575,
+    encryptedPassword: rcon.encryptedPassword,
+    timeoutMs: rcon.timeoutMs ?? 5_000,
+    whitelistAddCommand:
+      rcon.whitelistAddCommand ?? 'whitelist add {minecraftId}',
+    whitelistReloadCommand: rcon.whitelistReloadCommand ?? null,
+    customCommandsEnabled:
+      rcon.customCommandsEnabled ??
+      defaultRconCommandSafety.customCommandsEnabled,
+    blockedCommands:
+      rcon.blockedCommands ?? defaultRconCommandSafety.blockedCommands,
+  };
 }
 
 interface StoredRuntimeConfig {
@@ -44,9 +100,8 @@ interface StoredRuntimeConfig {
     name: string;
     subtitle: string;
   };
-  rcon: Omit<RuntimeRconConfig, 'password'> & {
-    encryptedPassword: string;
-  };
+  application?: RuntimeApplicationConfig;
+  rcon: StoredRconConfig;
   configuredAt: string;
 }
 
@@ -54,6 +109,7 @@ export interface SetupRuntimeConfigInput {
   siteName: string;
   siteSubtitle: string;
   rcon: RuntimeRconConfig;
+  application?: RuntimeApplicationConfig;
 }
 
 export interface UpdateRuntimeConfigInput {
@@ -62,6 +118,7 @@ export interface UpdateRuntimeConfigInput {
   rcon: Omit<RuntimeRconConfig, 'password'> & {
     password?: string;
   };
+  application: RuntimeApplicationConfig;
 }
 
 export function hasRuntimeConfig() {
@@ -76,6 +133,7 @@ export function saveRuntimeConfig(input: SetupRuntimeConfigInput) {
       name: input.siteName,
       subtitle: input.siteSubtitle,
     },
+    application: input.application ?? defaultApplicationConfig,
     rcon: {
       enabled: input.rcon.enabled,
       host: input.rcon.host,
@@ -84,6 +142,8 @@ export function saveRuntimeConfig(input: SetupRuntimeConfigInput) {
       timeoutMs: input.rcon.timeoutMs,
       whitelistAddCommand: input.rcon.whitelistAddCommand,
       whitelistReloadCommand: input.rcon.whitelistReloadCommand,
+      customCommandsEnabled: input.rcon.customCommandsEnabled,
+      blockedCommands: input.rcon.blockedCommands,
     },
     configuredAt: new Date().toISOString(),
   };
@@ -116,19 +176,29 @@ export function getEffectiveRconConfig(): RuntimeRconConfig {
       timeoutMs: storedConfig.rcon.timeoutMs,
       whitelistAddCommand: storedConfig.rcon.whitelistAddCommand,
       whitelistReloadCommand: storedConfig.rcon.whitelistReloadCommand,
+      customCommandsEnabled: storedConfig.rcon.customCommandsEnabled,
+      blockedCommands: storedConfig.rcon.blockedCommands,
     };
   }
 
-  return env.rcon;
+  return fallbackRconConfig;
+}
+
+export function getEffectiveApplicationConfig(): RuntimeApplicationConfig {
+  const storedConfig = readRuntimeConfig();
+
+  return storedConfig?.application ?? defaultApplicationConfig;
 }
 
 export function getAdminRuntimeConfig() {
   const storedConfig = readRuntimeConfig();
   const rcon = getEffectiveRconConfig();
+  const application = getEffectiveApplicationConfig();
 
   return {
     source: storedConfig ? ('runtime' as const) : ('environment' as const),
     site: getPublicSiteConfig(),
+    application,
     rcon: {
       enabled: rcon.enabled,
       host: rcon.host,
@@ -137,6 +207,8 @@ export function getAdminRuntimeConfig() {
       timeoutMs: rcon.timeoutMs,
       whitelistAddCommand: rcon.whitelistAddCommand,
       whitelistReloadCommand: rcon.whitelistReloadCommand ?? '',
+      customCommandsEnabled: rcon.customCommandsEnabled,
+      blockedCommands: rcon.blockedCommands,
     },
   };
 }
@@ -152,6 +224,7 @@ export function updateRuntimeConfig(input: UpdateRuntimeConfigInput) {
   saveRuntimeConfig({
     siteName: input.siteName,
     siteSubtitle: input.siteSubtitle,
+    application: input.application,
     rcon: {
       ...input.rcon,
       password,
@@ -207,6 +280,12 @@ export function consumeGeneratedSetupToken() {
   }
 }
 
+export function resetRuntimeConfigFiles() {
+  rmSync(runtimeConfigPath, { force: true });
+  rmSync(setupTokenPath, { force: true });
+  rmSync(encryptionKeyPath, { force: true });
+}
+
 function readRuntimeConfig(): StoredRuntimeConfig | null {
   if (!existsSync(runtimeConfigPath)) {
     return null;
@@ -220,7 +299,11 @@ function readRuntimeConfig(): StoredRuntimeConfig | null {
     throw new Error('不支持的运行时配置版本');
   }
 
-  return parsed;
+  return {
+    ...parsed,
+    application: parsed.application ?? defaultApplicationConfig,
+    rcon: normalizeRconConfig(parsed.rcon),
+  };
 }
 
 function encryptSecret(value: string) {

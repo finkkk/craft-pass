@@ -34,6 +34,7 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
   const [agreement, setAgreement] = useState<Agreement | null>(null);
   const [ui, setUi] = useState<UiContent | null>(null);
   const [quiz, setQuiz] = useState<Quiz | null>(null);
+  const [submissionsEnabled, setSubmissionsEnabled] = useState(true);
   const [agreementAccepted, setAgreementAccepted] = useState(false);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [result, setResult] = useState<ApplicationResult | null>(null);
@@ -54,6 +55,7 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
         if (!cancelled) {
           setAgreement(loadedContent.agreement);
           setUi(loadedContent.ui);
+          setSubmissionsEnabled(loadedContent.application.submissionsEnabled);
           setQuiz(loadedQuiz);
         }
       } catch (error) {
@@ -136,7 +138,7 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
   return (
     <div className="site-shell">
       <header className="site-header">
-        <a className="brand" href="/" aria-label="Craft Pass 首页">
+        <a className="brand" href="/" aria-label={`${site.name} 首页`}>
           <BrandMark />
           <span>
             <strong>{site.name.toUpperCase()}</strong>
@@ -168,6 +170,7 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
           <ApplyPage
             initialValue={identity}
             configLoading={loadingConfig}
+            submissionsEnabled={submissionsEnabled}
             questionCount={quiz?.questionCount}
             passingScore={quiz?.passingScore}
             copy={ui.apply}
@@ -209,6 +212,16 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
       <footer className="site-footer">
         <p>{ui?.navigation.footerPrimary ?? site.name}</p>
         <p>{ui?.navigation.footerSecondary ?? site.subtitle}</p>
+        <p className="project-credit">
+          作者 finkkk ·{' '}
+          <a
+            href="https://github.com/finkkk/craft-pass"
+            target="_blank"
+            rel="noreferrer"
+          >
+            finkkk/craft-pass
+          </a>
+        </p>
       </footer>
     </div>
   );

@@ -87,7 +87,7 @@ export const defaultUiContent = {
 const shortText = (max: number, fallback: string) =>
   z.string().trim().min(1).max(max).default(fallback);
 
-const uiContentSchema = z
+export const uiContentSchema = z
   .object({
     navigation: z
       .object({
@@ -334,3 +334,4 @@ export const contentConfigSchema = z
   });
 
 export type ContentConfig = z.infer<typeof contentConfigSchema>;
+export type UiContentConfig = z.infer<typeof uiContentSchema>;

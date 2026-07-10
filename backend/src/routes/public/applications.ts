@@ -1,11 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { getContentConfig } from '../../config/contentConfig.js';
+import { getEffectiveApplicationConfig } from '../../config/runtimeConfig.js';
 import { toPublicApplicationStatus } from '../../domain/applicationStatus.js';
 import { applicationSubmissionRateLimiter } from '../../middleware/security.js';
 import { createApplicationSchema } from '../../schemas/application.js';
 import {
   AgreementVersionOutdatedError,
+  ApplicationCooldownError,
+  ApplicationRateLimitError,
+  ApplicationSubmissionsDisabledError,
   createApplication,
   DuplicateActiveApplicationError,
 } from '../../services/applicationService.js';
@@ -18,17 +22,24 @@ applicationsRouter.get('/agreement', (_request, response) => {
   response.json({
     agreement,
     ui,
+    application: {
+      submissionsEnabled: getEffectiveApplicationConfig().submissionsEnabled,
+    },
   });
 });
 
 applicationsRouter.get('/quiz', (_request, response) => {
   const { quiz } = getContentConfig();
+  const questions = shuffle(
+    quiz.questions.map(({ correctOptionId: _correctOptionId, ...question }) => ({
+      ...question,
+    })),
+  );
+
   response.json({
     passingScore: quiz.passingScore,
     questionCount: quiz.questions.length,
-    questions: quiz.questions.map(
-      ({ correctOptionId: _correctOptionId, ...question }) => question,
-    ),
+    questions,
   });
 });
 
@@ -100,7 +111,41 @@ applicationsRouter.post(
         );
       }
 
+      if (error instanceof ApplicationSubmissionsDisabledError) {
+        throw new HttpError(
+          503,
+          'APPLICATION_SUBMISSIONS_DISABLED',
+          error.message,
+        );
+      }
+
+      if (error instanceof ApplicationCooldownError) {
+        throw new HttpError(429, 'APPLICATION_COOLDOWN_ACTIVE', error.message, {
+          retryAt: error.retryAt.toISOString(),
+        });
+      }
+
+      if (error instanceof ApplicationRateLimitError) {
+        throw new HttpError(429, 'APPLICATION_RATE_LIMIT_ACTIVE', error.message, {
+          dimension: error.dimension,
+        });
+      }
+
       throw error;
     }
   },
 );
+
+function shuffle<T>(items: readonly T[]) {
+  const shuffled = [...items];
+
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [shuffled[index], shuffled[swapIndex]] = [
+      shuffled[swapIndex]!,
+      shuffled[index]!,
+    ];
+  }
+
+  return shuffled;
+}

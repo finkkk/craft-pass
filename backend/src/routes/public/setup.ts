@@ -9,7 +9,10 @@ import {
   SetupError,
 } from '../../services/setupService.js';
 import { HttpError } from '../../utils/HttpError.js';
-import { getSiteLogo } from '../../services/siteLogoService.js';
+import {
+  getSiteLogo,
+  getSiteLogoStatus,
+} from '../../services/siteLogoService.js';
 
 export const setupRouter = Router();
 
@@ -19,6 +22,14 @@ setupRouter.get('/setup/status', async (_request, response) => {
 
 setupRouter.get('/site-config', (_request, response) => {
   response.json(getPublicSiteConfig());
+});
+
+setupRouter.head('/site-logo', (_request, response) => {
+  if (!getSiteLogoStatus().configured) {
+    throw new HttpError(404, 'SITE_LOGO_NOT_FOUND', '尚未配置自定义 Logo');
+  }
+
+  response.status(204).set('Cache-Control', 'no-store').end();
 });
 
 setupRouter.get('/site-logo', (_request, response) => {

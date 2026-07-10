@@ -1,6 +1,7 @@
 import { hash } from 'bcryptjs';
 import {
   consumeGeneratedSetupToken,
+  defaultRconCommandSafety,
   getOrCreateSetupToken,
   getPublicSiteConfig,
   hasRuntimeConfig,
@@ -73,6 +74,9 @@ export async function completeSetup(input: CompleteSetupInput) {
       whitelistAddCommand: input.rcon.whitelistAddCommand,
       whitelistReloadCommand:
         input.rcon.whitelistReloadCommand || null,
+      customCommandsEnabled:
+        defaultRconCommandSafety.customCommandsEnabled,
+      blockedCommands: defaultRconCommandSafety.blockedCommands,
     },
   });
 

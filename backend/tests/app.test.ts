@@ -388,6 +388,8 @@ test('管理员可以更新站点与 RCON 配置且密码不会回显', async ()
 
   assert.equal(initialResponse.status, 200);
   assert.equal(initial.site.name, 'Craft Pass Test');
+  assert.equal(initial.application.submissionsEnabled, true);
+  assert.equal(initial.rcon.customCommandsEnabled, true);
   assert.equal('password' in initial.rcon, false);
 
   const invalidResponse = await fetch(`${baseUrl}/api/admin/settings`, {
@@ -401,7 +403,9 @@ test('管理员可以更新站点与 RCON 配置且密码不会回显', async ()
         name: 'Updated Craft Pass',
         subtitle: '更新后的测试站点',
       },
+      application: initial.application,
       rcon: {
+        ...initial.rcon,
         enabled: true,
         host: '127.0.0.1',
         port: 25575,
@@ -424,6 +428,10 @@ test('管理员可以更新站点与 RCON 配置且密码不会回显', async ()
         name: 'Updated Craft Pass',
         subtitle: '更新后的测试站点',
       },
+      application: {
+        ...initial.application,
+        maxSubmissionsPerQq: 15,
+      },
       rcon: {
         enabled: false,
         host: '192.0.2.10',
@@ -432,6 +440,8 @@ test('管理员可以更新站点与 RCON 配置且密码不会回显', async ()
         timeoutMs: 6000,
         whitelistAddCommand: 'whitelist add {minecraftId}',
         whitelistReloadCommand: 'whitelist reload',
+        customCommandsEnabled: true,
+        blockedCommands: ['stop', 'op'],
       },
     }),
   });
@@ -439,13 +449,132 @@ test('管理员可以更新站点与 RCON 配置且密码不会回显', async ()
 
   assert.equal(response.status, 200);
   assert.equal(body.site.name, 'Updated Craft Pass');
+  assert.equal(body.application.maxSubmissionsPerQq, 15);
   assert.equal(body.rcon.host, '192.0.2.10');
+  assert.deepEqual(body.rcon.blockedCommands, ['stop', 'op']);
   assert.equal(body.rcon.reloadAfterAdd, undefined);
   assert.equal('password' in body.rcon, false);
 
   const publicResponse = await fetch(`${baseUrl}/api/site-config`);
   const publicConfig = await publicResponse.json();
   assert.equal(publicConfig.name, 'Updated Craft Pass');
+});
+
+test('系统配置可以控制申请入口、失败冷却和提交频率', async () => {
+  const headers = {
+    Cookie: adminCookie,
+    'Content-Type': 'application/json',
+  };
+  const settingsResponse = await fetch(`${baseUrl}/api/admin/settings`, {
+    headers,
+  });
+  const originalSettings = await settingsResponse.json();
+  const createdApplicationIds: string[] = [];
+
+  async function saveSettings(
+    application: typeof originalSettings.application,
+  ) {
+    const response = await fetch(`${baseUrl}/api/admin/settings`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        site: originalSettings.site,
+        application,
+        rcon: {
+          enabled: originalSettings.rcon.enabled,
+          host: originalSettings.rcon.host,
+          port: originalSettings.rcon.port,
+          password: '',
+          timeoutMs: originalSettings.rcon.timeoutMs,
+          whitelistAddCommand: originalSettings.rcon.whitelistAddCommand,
+          whitelistReloadCommand:
+            originalSettings.rcon.whitelistReloadCommand,
+          customCommandsEnabled:
+            originalSettings.rcon.customCommandsEnabled,
+          blockedCommands: originalSettings.rcon.blockedCommands,
+        },
+      }),
+    });
+
+    assert.equal(response.status, 200);
+  }
+
+  try {
+    await saveSettings({
+      ...originalSettings.application,
+      submissionsEnabled: false,
+    });
+    const disabledResponse = await postApplication(
+      buildValidApplicationPayload('ClosedEntry'),
+    );
+    const disabledBody = await disabledResponse.json();
+    assert.equal(disabledResponse.status, 503);
+    assert.equal(
+      disabledBody.error.code,
+      'APPLICATION_SUBMISSIONS_DISABLED',
+    );
+
+    await saveSettings({
+      ...originalSettings.application,
+      submissionsEnabled: true,
+      quizFailCooldownMinutes: 60,
+      maxSubmissionsPerQq: 20,
+      maxSubmissionsPerMinecraftId: 20,
+    });
+    const failedPayload = {
+      ...buildValidApplicationPayload('CooldownFail'),
+      qqNumber: '423456789',
+      answers: buildAnswers(0),
+    };
+    const failedResponse = await postApplication(failedPayload);
+    const failedBody = await failedResponse.json();
+    createdApplicationIds.push(failedBody.applicationId);
+    assert.equal(failedResponse.status, 201);
+
+    const cooldownResponse = await postApplication({
+      ...buildValidApplicationPayload('CooldownRetry'),
+      qqNumber: '423456789',
+    });
+    const cooldownBody = await cooldownResponse.json();
+    assert.equal(cooldownResponse.status, 429);
+    assert.equal(cooldownBody.error.code, 'APPLICATION_COOLDOWN_ACTIVE');
+    assert.match(cooldownBody.error.details.retryAt, /^\d{4}-/);
+
+    await saveSettings({
+      ...originalSettings.application,
+      submissionsEnabled: true,
+      quizFailCooldownMinutes: 0,
+      rateLimitWindowMinutes: 60,
+      maxSubmissionsPerQq: 1,
+      maxSubmissionsPerMinecraftId: 20,
+    });
+    const rateLimitedFirstResponse = await postApplication({
+      ...buildValidApplicationPayload('RateLimitOne'),
+      qqNumber: '523456789',
+    });
+    const rateLimitedFirstBody = await rateLimitedFirstResponse.json();
+    createdApplicationIds.push(rateLimitedFirstBody.applicationId);
+    assert.equal(rateLimitedFirstResponse.status, 201);
+
+    const rateLimitedSecondResponse = await postApplication({
+      ...buildValidApplicationPayload('RateLimitTwo'),
+      qqNumber: '523456789',
+    });
+    const rateLimitedSecondBody = await rateLimitedSecondResponse.json();
+    assert.equal(rateLimitedSecondResponse.status, 429);
+    assert.equal(
+      rateLimitedSecondBody.error.code,
+      'APPLICATION_RATE_LIMIT_ACTIVE',
+    );
+    assert.equal(rateLimitedSecondBody.error.details.dimension, 'QQ 号');
+  } finally {
+    await saveSettings(originalSettings.application);
+    await prisma.application.deleteMany({
+      where: {
+        id: { in: createdApplicationIds.filter(Boolean) },
+      },
+    });
+  }
 });
 
 test('管理员可以上传和移除站点 Logo，公开接口只返回安全图片', async () => {
@@ -591,6 +720,45 @@ test('管理员可以自定义服规与题库且公开接口不会泄露答案',
       'correctOptionId' in quizBody.questions[0],
       false,
     );
+
+    const uiUpdateResponse = await fetch(`${baseUrl}/api/admin/content/ui`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        ...updateBody.content.ui,
+        apply: {
+          ...updateBody.content.ui.apply,
+          qqLabel: '联系 QQ',
+        },
+      }),
+    });
+    const uiUpdateBody = await uiUpdateResponse.json();
+    assert.equal(uiUpdateResponse.status, 200);
+    assert.equal(uiUpdateBody.content.ui.apply.qqLabel, '联系 QQ');
+    assert.equal(uiUpdateBody.content.agreement.version, 'custom-test-v2');
+    assert.equal(uiUpdateBody.content.quiz.questions.length, 2);
+
+    const rulesQuizUpdateResponse = await fetch(
+      `${baseUrl}/api/admin/content/rules-quiz`,
+      {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({
+          agreement: {
+            ...customContent.agreement,
+            title: '只更新服规题库',
+          },
+          quiz: customContent.quiz,
+        }),
+      },
+    );
+    const rulesQuizUpdateBody = await rulesQuizUpdateResponse.json();
+    assert.equal(rulesQuizUpdateResponse.status, 200);
+    assert.equal(
+      rulesQuizUpdateBody.content.agreement.title,
+      '只更新服规题库',
+    );
+    assert.equal(rulesQuizUpdateBody.content.ui.apply.qqLabel, '联系 QQ');
 
     const outdatedResponse = await postApplication({
       qqNumber: '323456789',
@@ -804,6 +972,89 @@ test('RCON 未启用时批准接口不会错误修改申请状态', async () => 
   assert.equal(application.status, ApplicationStatus.PENDING_REVIEW);
 });
 
+test('RCON 未启用时自定义命令接口会拒绝执行', async () => {
+  const response = await fetch(`${baseUrl}/api/admin/rcon/command`, {
+    method: 'POST',
+    headers: {
+      Cookie: adminCookie,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ command: 'list' }),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 503);
+  assert.equal(body.error.code, 'RCON_COMMAND_FAILED');
+});
+
+test('自定义 RCON 命令会被危险命令黑名单拦截', async () => {
+  const headers = {
+    Cookie: adminCookie,
+    'Content-Type': 'application/json',
+  };
+  const settingsResponse = await fetch(`${baseUrl}/api/admin/settings`, {
+    headers,
+  });
+  const originalSettings = await settingsResponse.json();
+
+  try {
+    const updateResponse = await fetch(`${baseUrl}/api/admin/settings`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        site: originalSettings.site,
+        application: originalSettings.application,
+        rcon: {
+          enabled: true,
+          host: originalSettings.rcon.host,
+          port: originalSettings.rcon.port,
+          password: 'safe-rcon-password',
+          timeoutMs: originalSettings.rcon.timeoutMs,
+          whitelistAddCommand: originalSettings.rcon.whitelistAddCommand,
+          whitelistReloadCommand:
+            originalSettings.rcon.whitelistReloadCommand,
+          customCommandsEnabled: true,
+          blockedCommands: ['stop', 'op'],
+        },
+      }),
+    });
+    assert.equal(updateResponse.status, 200);
+
+    const response = await fetch(`${baseUrl}/api/admin/rcon/command`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ command: '/stop' }),
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 503);
+    assert.equal(body.error.code, 'RCON_COMMAND_FAILED');
+    assert.match(body.error.message, /黑名单/);
+  } finally {
+    await fetch(`${baseUrl}/api/admin/settings`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({
+        site: originalSettings.site,
+        application: originalSettings.application,
+        rcon: {
+          enabled: originalSettings.rcon.enabled,
+          host: originalSettings.rcon.host,
+          port: originalSettings.rcon.port,
+          password: '',
+          timeoutMs: originalSettings.rcon.timeoutMs,
+          whitelistAddCommand: originalSettings.rcon.whitelistAddCommand,
+          whitelistReloadCommand:
+            originalSettings.rcon.whitelistReloadCommand,
+          customCommandsEnabled:
+            originalSettings.rcon.customCommandsEnabled,
+          blockedCommands: originalSettings.rcon.blockedCommands,
+        },
+      }),
+    });
+  }
+});
+
 test('模拟 RCON 成功后申请进入白名单并保存执行记录', async () => {
   const executor: RconExecutor = {
     async addToWhitelist(minecraftId) {
@@ -957,6 +1208,84 @@ test('退出后管理员会话立即失效', async () => {
 
   assert.equal(sessionResponse.status, 401);
   assert.equal(body.error.code, 'ADMIN_SESSION_INVALID');
+});
+
+test('管理员可以恢复出厂设置并重新进入部署流程', async () => {
+  const loginResponse = await fetch(`${baseUrl}/api/admin/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      username: 'test_admin',
+      password: 'admin123',
+    }),
+  });
+  const resetCookie = loginResponse.headers.get('set-cookie')?.split(';')[0];
+  assert.equal(loginResponse.status, 200);
+  assert.ok(resetCookie);
+
+  const invalidResponse = await fetch(
+    `${baseUrl}/api/admin/system/factory-reset`,
+    {
+      method: 'POST',
+      headers: {
+        Cookie: resetCookie,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ confirmation: 'WRONG' }),
+    },
+  );
+  assert.equal(invalidResponse.status, 400);
+
+  const response = await fetch(`${baseUrl}/api/admin/system/factory-reset`, {
+    method: 'POST',
+    headers: {
+      Cookie: resetCookie,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ confirmation: 'RESET' }),
+  });
+  const body = await response.json();
+  const clearedCookie = response.headers.get('set-cookie') ?? '';
+
+  assert.equal(response.status, 200);
+  assert.equal(body.setupRequired, true);
+  assert.match(body.setupToken, /^[A-Za-z0-9_-]{16,}$/);
+  assert.match(clearedCookie, /craft_pass_admin_session=;/);
+  assert.equal(await prisma.admin.count(), 0);
+  assert.equal(await prisma.application.count(), 0);
+
+  const setupStatusResponse = await fetch(`${baseUrl}/api/setup/status`);
+  const setupStatus = await setupStatusResponse.json();
+  assert.equal(setupStatus.setupRequired, true);
+
+  const completeResponse = await fetch(`${baseUrl}/api/setup/complete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      setupToken: body.setupToken,
+      siteName: 'Craft Pass Reset',
+      siteSubtitle: '重新部署测试',
+      admin: {
+        username: 'reset_admin',
+        password: 'admin123',
+      },
+      rcon: {
+        enabled: false,
+        host: '127.0.0.1',
+        port: 25575,
+        password: '',
+        timeoutMs: 5000,
+        whitelistAddCommand: 'whitelist add {minecraftId}',
+        whitelistReloadCommand: '',
+      },
+    }),
+  });
+  const completeBody = await completeResponse.json();
+
+  assert.equal(completeResponse.status, 201);
+  assert.equal(completeBody.admin.username, 'reset_admin');
 });
 
 function buildValidApplicationPayload(minecraftId: string) {

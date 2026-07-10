@@ -46,7 +46,7 @@ export const apiRateLimiter = rateLimit({
 
 export const applicationSubmissionRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
-  limit: 10,
+  limit: env.nodeEnv === 'test' ? 1_000 : 10,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   handler(_request, response) {

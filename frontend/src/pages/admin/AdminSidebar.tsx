@@ -2,7 +2,13 @@ import { logoutAdmin } from '../../api/admin';
 import type { AdminIdentity } from '../../types/admin';
 import { BrandMark } from '../../components/BrandMark';
 
-type AdminSection = 'review' | 'statistics' | 'content' | 'settings';
+type AdminSection =
+  | 'review'
+  | 'statistics'
+  | 'content'
+  | 'appearance'
+  | 'rcon'
+  | 'settings';
 
 const navigation = [
   { id: 'review', href: '/admin', icon: '⌂', label: '审核中心' },
@@ -17,6 +23,18 @@ const navigation = [
     href: '/admin/content',
     icon: '✎',
     label: '题库与服规',
+  },
+  {
+    id: 'appearance',
+    href: '/admin/appearance',
+    icon: '◇',
+    label: '界面定制',
+  },
+  {
+    id: 'rcon',
+    href: '/admin/rcon',
+    icon: '>',
+    label: 'RCON 控制台',
   },
   {
     id: 'settings',
@@ -42,7 +60,7 @@ export function AdminSidebar({
     <aside className="admin-sidebar">
       <a className="admin-brand" href="/">
         <BrandMark className="admin-brand-mark" />
-        CRAFT PASS
+        <strong className="admin-brand-name">Craft Pass</strong>
       </a>
       <nav>
         {navigation.map((item) => (
@@ -69,6 +87,14 @@ export function AdminSidebar({
           退出
         </button>
       </div>
+      <a
+        className="admin-project-credit"
+        href="https://github.com/finkkk/craft-pass"
+        target="_blank"
+        rel="noreferrer"
+      >
+        作者 finkkk · craft-pass
+      </a>
     </aside>
   );
 }

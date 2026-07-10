@@ -3,11 +3,13 @@ import { getSetupStatus } from './api/setup';
 import { AdminApp } from './pages/admin/AdminApp';
 import { PlayerApp } from './pages/player/PlayerApp';
 import { SetupApp } from './pages/setup/SetupApp';
-import type { SetupStatus } from './types/setup';
+import type { PublicSiteConfig, SetupStatus } from './types/setup';
 
 export function App() {
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
+
+  useDocumentBrand(setupStatus?.site ?? null);
 
   useEffect(() => {
     getSetupStatus()
@@ -48,8 +50,60 @@ export function App() {
   }
 
   return window.location.pathname.startsWith('/admin') ? (
-    <AdminApp />
+    <AdminApp site={setupStatus.site} />
   ) : (
     <PlayerApp site={setupStatus.site} />
   );
+}
+
+function useDocumentBrand(site: PublicSiteConfig | null) {
+  useEffect(() => {
+    const siteName = site?.name.trim() || 'Craft Pass';
+    document.title = siteName;
+
+    const favicon = getOrCreateFavicon();
+    const fallbackFavicon = createFallbackFavicon(siteName);
+    const controller = new AbortController();
+
+    fetch('/api/site-logo', {
+      cache: 'no-store',
+      method: 'HEAD',
+      signal: controller.signal,
+    })
+      .then((response) => {
+        favicon.href = response.ok
+          ? `/api/site-logo?v=${Date.now()}`
+          : fallbackFavicon;
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) {
+          favicon.href = fallbackFavicon;
+        }
+      });
+
+    return () => controller.abort();
+  }, [site?.name]);
+}
+
+function getOrCreateFavicon() {
+  const existing = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (existing) {
+    return existing;
+  }
+
+  const favicon = document.createElement('link');
+  favicon.rel = 'icon';
+  document.head.appendChild(favicon);
+  return favicon;
+}
+
+function createFallbackFavicon(siteName: string) {
+  const initials =
+    siteName
+      .match(/[a-zA-Z0-9\u4e00-\u9fa5]/g)
+      ?.slice(0, 2)
+      .join('')
+      .toUpperCase() || 'CP';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#245f3b"/><text x="32" y="39" text-anchor="middle" font-family="Arial, sans-serif" font-size="23" font-weight="700" fill="#fff">${initials}</text></svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }

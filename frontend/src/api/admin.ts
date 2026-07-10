@@ -3,11 +3,13 @@ import type {
   AdminApplicationRow,
   AdminIdentity,
   AdminLogoStatus,
+  FactoryResetResult,
   AdminSummary,
   AdminStatistics,
   AdminContentConfig,
   AdminSettings,
   ApplicationStatus,
+  RconCommandResult,
   RconStatus,
   ReviewActionResult,
   UpdateAdminSettings,
@@ -73,8 +75,44 @@ export async function updateAdminContent(content: AdminContentConfig) {
   return response.content;
 }
 
+export async function updateAdminRulesQuizContent(
+  content: Pick<AdminContentConfig, 'agreement' | 'quiz'>,
+) {
+  const response = await adminRequest<{ content: AdminContentConfig }>(
+    '/api/admin/content/rules-quiz',
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(content),
+    },
+  );
+  return response.content;
+}
+
+export async function updateAdminUiContent(
+  ui: AdminContentConfig['ui'],
+) {
+  const response = await adminRequest<{ content: AdminContentConfig }>(
+    '/api/admin/content/ui',
+    {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ui),
+    },
+  );
+  return response.content;
+}
+
 export function getRconStatus() {
   return adminRequest<RconStatus>('/api/admin/rcon/status');
+}
+
+export function executeRconCommand(command: string) {
+  return adminRequest<RconCommandResult>('/api/admin/rcon/command', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ command }),
+  });
 }
 
 export function getAdminSettings() {
@@ -96,6 +134,14 @@ export function updateAdminLogo(dataUrl: string) {
 export function deleteAdminLogo() {
   return adminRequest<AdminLogoStatus>('/api/admin/logo', {
     method: 'DELETE',
+  });
+}
+
+export function factoryResetSystem(confirmation: string) {
+  return adminRequest<FactoryResetResult>('/api/admin/system/factory-reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ confirmation }),
   });
 }
 

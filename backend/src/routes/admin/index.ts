@@ -20,7 +20,10 @@ import {
   updateLogoSchema,
   updateSettingsSchema,
 } from '../../schemas/settings.js';
-import { contentConfigSchema } from '../../schemas/content.js';
+import {
+  contentConfigSchema,
+  uiContentSchema,
+} from '../../schemas/content.js';
 import {
   getAdminApplication,
   getAdminDashboardSummary,
@@ -40,7 +43,10 @@ import {
   retryApplicationRcon,
   ReviewOperationError,
 } from '../../services/reviewService.js';
-import { getRconConfigurationStatus } from '../../services/rconService.js';
+import {
+  executeRconCommand,
+  getRconConnectionStatus,
+} from '../../services/rconService.js';
 import { getAdminStatistics } from '../../services/adminStatisticsService.js';
 import {
   deleteSiteLogo,
@@ -57,8 +63,26 @@ import {
   getContentConfig,
   saveContentConfig,
 } from '../../config/contentConfig.js';
+import { factoryReset } from '../../services/factoryResetService.js';
 
 export const adminRouter = Router();
+
+const rconCommandSchema = z
+  .object({
+    command: z
+      .string()
+      .trim()
+      .min(1)
+      .max(300)
+      .refine((command) => !/[\r\n]/.test(command), '命令不能包含换行'),
+  })
+  .strict();
+
+const factoryResetSchema = z
+  .object({
+    confirmation: z.literal('RESET'),
+  })
+  .strict();
 
 adminRouter.post(
   '/login',
@@ -197,6 +221,79 @@ adminRouter.put('/content', async (request, response) => {
   response.json({ content });
 });
 
+adminRouter.put('/content/rules-quiz', async (request, response) => {
+  const current = getContentConfig();
+  const result = contentConfigSchema.safeParse({
+    ui: current.ui,
+    agreement: request.body?.agreement,
+    quiz: request.body?.quiz,
+  });
+
+  if (!result.success) {
+    throw new HttpError(
+      400,
+      'VALIDATION_ERROR',
+      '服规或题库格式不正确',
+      z.flattenError(result.error),
+    );
+  }
+
+  const content = saveContentConfig({
+    ...current,
+    agreement: result.data.agreement,
+    quiz: result.data.quiz,
+  });
+
+  await prisma.adminLog.create({
+    data: {
+      adminId: response.locals.admin!.id,
+      action: AdminAction.UPDATE_CONTENT,
+      ipAddress: request.ip,
+      detail: {
+        scope: 'rules-quiz',
+        previousAgreementVersion: current.agreement.version,
+        agreementVersion: content.agreement.version,
+        previousQuestionCount: current.quiz.questions.length,
+        questionCount: content.quiz.questions.length,
+      },
+    },
+  });
+
+  response.json({ content });
+});
+
+adminRouter.put('/content/ui', async (request, response) => {
+  const result = uiContentSchema.safeParse(request.body);
+
+  if (!result.success) {
+    throw new HttpError(
+      400,
+      'VALIDATION_ERROR',
+      '玩家端界面文案格式不正确',
+      z.flattenError(result.error),
+    );
+  }
+
+  const current = getContentConfig();
+  const content = saveContentConfig({
+    ...current,
+    ui: result.data,
+  });
+
+  await prisma.adminLog.create({
+    data: {
+      adminId: response.locals.admin!.id,
+      action: AdminAction.UPDATE_CONTENT,
+      ipAddress: request.ip,
+      detail: {
+        scope: 'ui',
+      },
+    },
+  });
+
+  response.json({ content });
+});
+
 adminRouter.get('/settings', (_request, response) => {
   response.json(getAdminRuntimeConfig());
 });
@@ -263,6 +360,7 @@ adminRouter.put('/settings', (request, response) => {
       updateRuntimeConfig({
         siteName: result.data.site.name,
         siteSubtitle: result.data.site.subtitle,
+        application: result.data.application,
         rcon: {
           enabled: result.data.rcon.enabled,
           host: result.data.rcon.host,
@@ -273,6 +371,8 @@ adminRouter.put('/settings', (request, response) => {
             result.data.rcon.whitelistAddCommand,
           whitelistReloadCommand:
             result.data.rcon.whitelistReloadCommand || null,
+          customCommandsEnabled: result.data.rcon.customCommandsEnabled,
+          blockedCommands: result.data.rcon.blockedCommands,
         },
       }),
     );
@@ -285,8 +385,56 @@ adminRouter.put('/settings', (request, response) => {
   }
 });
 
-adminRouter.get('/rcon/status', (_request, response) => {
-  response.json(getRconConfigurationStatus());
+adminRouter.post('/system/factory-reset', async (request, response) => {
+  const result = factoryResetSchema.safeParse(request.body);
+
+  if (!result.success) {
+    throw new HttpError(
+      400,
+      'VALIDATION_ERROR',
+      '恢复出厂设置确认文本不正确',
+      z.flattenError(result.error),
+    );
+  }
+
+  const resetResult = await factoryReset();
+
+  response.clearCookie(
+    adminSessionCookieName,
+    getAdminSessionClearCookieOptions(),
+  );
+  response.json({
+    setupRequired: true,
+    setupToken: resetResult.setupToken,
+  });
+});
+
+adminRouter.get('/rcon/status', async (_request, response) => {
+  response.json(await getRconConnectionStatus());
+});
+
+adminRouter.post('/rcon/command', async (request, response) => {
+  const result = rconCommandSchema.safeParse(request.body);
+
+  if (!result.success) {
+    throw new HttpError(
+      400,
+      'VALIDATION_ERROR',
+      'RCON 命令格式不正确',
+      z.flattenError(result.error),
+    );
+  }
+
+  try {
+    const output = await executeRconCommand(result.data.command);
+    response.json(output);
+  } catch (error) {
+    throw new HttpError(
+      503,
+      'RCON_COMMAND_FAILED',
+      error instanceof Error ? error.message : 'RCON 命令执行失败',
+    );
+  }
 });
 
 adminRouter.get('/applications', async (request, response) => {

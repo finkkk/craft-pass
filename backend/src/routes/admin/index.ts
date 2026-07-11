@@ -15,7 +15,10 @@ import {
   adminLoginSchema,
   updateAdminApplicationSchema,
 } from '../../schemas/admin.js';
-import { rejectApplicationSchema } from '../../schemas/review.js';
+import {
+  batchReviewSchema,
+  rejectApplicationSchema,
+} from '../../schemas/review.js';
 import {
   updateLogoSchema,
   updateSettingsSchema,
@@ -64,6 +67,7 @@ import {
   saveContentConfig,
 } from '../../config/contentConfig.js';
 import { factoryReset } from '../../services/factoryResetService.js';
+import { getVersionStatus } from '../../services/versionCheckService.js';
 
 export const adminRouter = Router();
 
@@ -298,6 +302,10 @@ adminRouter.get('/settings', (_request, response) => {
   response.json(getAdminRuntimeConfig());
 });
 
+adminRouter.get('/version', async (_request, response) => {
+  response.json(await getVersionStatus());
+});
+
 adminRouter.get('/logo', (_request, response) => {
   response.json(getSiteLogoStatus());
 });
@@ -360,6 +368,10 @@ adminRouter.put('/settings', (request, response) => {
       updateRuntimeConfig({
         siteName: result.data.site.name,
         siteSubtitle: result.data.site.subtitle,
+        server: {
+          port:
+            result.data.server?.port ?? getAdminRuntimeConfig().server.port,
+        },
         application: result.data.application,
         rcon: {
           enabled: result.data.rcon.enabled,
@@ -458,6 +470,68 @@ adminRouter.get('/applications', async (request, response) => {
       ...application,
       status: toPublicApplicationStatus(application.status),
     })),
+  });
+});
+
+adminRouter.post('/applications/batch-review', async (request, response) => {
+  const result = batchReviewSchema.safeParse(request.body);
+  if (!result.success) {
+    throw new HttpError(
+      400,
+      'VALIDATION_ERROR',
+      '批量审核数据格式不正确',
+      z.flattenError(result.error),
+    );
+  }
+
+  const results: Array<{
+    applicationId: string;
+    success: boolean;
+    status?: string;
+    error?: string;
+  }> = [];
+
+  for (const applicationId of result.data.applicationIds) {
+    try {
+      const application =
+        result.data.action === 'approve'
+          ? await approveApplication(
+              applicationId,
+              response.locals.admin!.id,
+              { ipAddress: request.ip },
+            )
+          : result.data.action === 'retry'
+            ? await retryApplicationRcon(
+                applicationId,
+                response.locals.admin!.id,
+                { ipAddress: request.ip },
+              )
+            : await rejectApplication(
+                applicationId,
+                response.locals.admin!.id,
+                result.data.reason,
+                { ipAddress: request.ip },
+              );
+
+      results.push({
+        applicationId,
+        success: true,
+        status: toPublicApplicationStatus(application.status),
+      });
+    } catch (error) {
+      results.push({
+        applicationId,
+        success: false,
+        error: error instanceof Error ? error.message : '操作失败',
+      });
+    }
+  }
+
+  response.json({
+    action: result.data.action,
+    succeeded: results.filter((item) => item.success).length,
+    failed: results.filter((item) => !item.success).length,
+    results,
   });
 });
 

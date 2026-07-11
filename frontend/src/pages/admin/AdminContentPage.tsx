@@ -284,27 +284,46 @@ export function AdminContentPage() {
                 </button>
               </header>
 
-              <ContentField
-                label="合格分数"
-                help="范围 1 至 100 分，由后端统一判分"
-              >
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={content.quiz.passingScore}
-                  onChange={(event) =>
-                    setContent({
-                      ...content,
-                      quiz: {
-                        ...content.quiz,
-                        passingScore: Number(event.target.value),
-                      },
-                    })
-                  }
-                  required
-                />
-              </ContentField>
+              <div className="content-grid two">
+                <ContentField
+                  label="合格分数"
+                  help="范围 1 至 100 分，由后端统一判分"
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={content.quiz.passingScore}
+                    onChange={(event) =>
+                      setContent({ ...content, quiz: { ...content.quiz, passingScore: Number(event.target.value) } })
+                    }
+                    required
+                  />
+                </ContentField>
+                <ContentField
+                  label="每次随机抽题数"
+                  help="留空表示使用全部题目；不能超过题库总数"
+                >
+                  <input
+                    type="number"
+                    min={1}
+                    max={content.quiz.questions.length}
+                    value={content.quiz.randomQuestionCount ?? ''}
+                    placeholder={`全部 ${content.quiz.questions.length} 题`}
+                    onChange={(event) =>
+                      setContent({
+                        ...content,
+                        quiz: {
+                          ...content.quiz,
+                          randomQuestionCount: event.target.value
+                            ? Number(event.target.value)
+                            : null,
+                        },
+                      })
+                    }
+                  />
+                </ContentField>
+              </div>
 
               <div className="question-editor-list">
                 {content.quiz.questions.map((question, questionIndex) => (
@@ -667,6 +686,13 @@ function normalizeContent(content: AdminContentConfig): AdminContentConfig {
     },
     quiz: {
       ...content.quiz,
+      randomQuestionCount:
+        content.quiz.randomQuestionCount === null
+          ? null
+          : Math.min(
+              content.quiz.randomQuestionCount,
+              content.quiz.questions.length,
+            ),
       questions: content.quiz.questions.map((question) => ({
         ...question,
         prompt: question.prompt.trim(),

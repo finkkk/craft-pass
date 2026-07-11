@@ -1,33 +1,49 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { getSetupStatus } from './api/setup';
-import { AdminApp } from './pages/admin/AdminApp';
 import { PlayerApp } from './pages/player/PlayerApp';
 import { SetupApp } from './pages/setup/SetupApp';
 import type { PublicSiteConfig, SetupStatus } from './types/setup';
+import { ApiClientError } from './api/client';
+
+const AdminApp = lazy(() =>
+  import('./pages/admin/AdminApp').then((module) => ({
+    default: module.AdminApp,
+  })),
+);
 
 export function App() {
+  const pathname = usePathname();
   const [setupStatus, setSetupStatus] = useState<SetupStatus | null>(null);
-  const [setupError, setSetupError] = useState<string | null>(null);
+  const [setupError, setSetupError] = useState<Error | null>(null);
 
   useDocumentBrand(setupStatus?.site ?? null);
 
   useEffect(() => {
-    getSetupStatus()
-      .then(setSetupStatus)
-      .catch((error: unknown) =>
-        setSetupError(
-          error instanceof Error ? error.message : '无法读取部署状态',
-        ),
-      );
+    void loadSetupStatus();
   }, []);
+
+  async function loadSetupStatus() {
+    setSetupError(null);
+    try {
+      setSetupStatus(await getSetupStatus());
+    } catch (error) {
+      setSetupError(
+        error instanceof Error ? error : new Error('无法读取部署状态'),
+      );
+    }
+  }
 
   if (setupError) {
     return (
       <main className="bootstrap-loading">
-        <strong>无法连接 Craft Pass 后端</strong>
-        <p>{setupError}</p>
-        <button type="button" onClick={() => window.location.reload()}>
-          重新连接
+        <strong>
+          {setupError instanceof ApiClientError && setupError.status === 0
+            ? '无法连接 Craft Pass 后端'
+            : '暂时无法加载 Craft Pass'}
+        </strong>
+        <p>{setupError.message}</p>
+        <button type="button" onClick={() => void loadSetupStatus()}>
+          重新尝试
         </button>
       </main>
     );
@@ -39,21 +55,35 @@ export function App() {
 
   if (
     setupStatus.setupRequired &&
-    window.location.pathname !== '/setup'
+    pathname !== '/setup'
   ) {
     window.location.replace('/setup');
     return <main className="bootstrap-loading">正在进入部署向导…</main>;
   }
 
-  if (window.location.pathname === '/setup') {
+  if (pathname === '/setup') {
     return <SetupApp initialStatus={setupStatus} />;
   }
 
-  return window.location.pathname.startsWith('/admin') ? (
-    <AdminApp site={setupStatus.site} />
+  return pathname.startsWith('/admin') ? (
+    <Suspense fallback={<main className="bootstrap-loading">正在加载管理后台…</main>}>
+      <AdminApp site={setupStatus.site} pathname={pathname} />
+    </Suspense>
   ) : (
     <PlayerApp site={setupStatus.site} />
   );
+}
+
+function usePathname() {
+  const [pathname, setPathname] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const updatePathname = () => setPathname(window.location.pathname);
+    window.addEventListener('popstate', updatePathname);
+    return () => window.removeEventListener('popstate', updatePathname);
+  }, []);
+
+  return pathname;
 }
 
 function useDocumentBrand(site: PublicSiteConfig | null) {

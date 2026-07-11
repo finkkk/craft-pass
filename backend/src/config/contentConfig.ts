@@ -33,15 +33,18 @@ const defaultContent: ContentConfig = contentConfigSchema.parse({
     questions: quizQuestions,
   },
 });
+let cachedContentConfig: ContentConfig | undefined;
 
 export function getContentConfig(): ContentConfig {
-  if (!existsSync(contentConfigPath)) {
-    return structuredClone(defaultContent);
+  if (!cachedContentConfig) {
+    cachedContentConfig = existsSync(contentConfigPath)
+      ? contentConfigSchema.parse(
+          JSON.parse(readFileSync(contentConfigPath, 'utf8')),
+        )
+      : structuredClone(defaultContent);
   }
 
-  return contentConfigSchema.parse(
-    JSON.parse(readFileSync(contentConfigPath, 'utf8')),
-  );
+  return structuredClone(cachedContentConfig);
 }
 
 export function saveContentConfig(content: ContentConfig) {
@@ -51,10 +54,12 @@ export function saveContentConfig(content: ContentConfig) {
   mkdirSync(dataDirectory, { recursive: true });
   writeFileSync(temporaryPath, JSON.stringify(validated, null, 2), 'utf8');
   renameSync(temporaryPath, contentConfigPath);
+  cachedContentConfig = structuredClone(validated);
 
   return getContentConfig();
 }
 
 export function resetContentConfig() {
   rmSync(contentConfigPath, { force: true });
+  cachedContentConfig = structuredClone(defaultContent);
 }

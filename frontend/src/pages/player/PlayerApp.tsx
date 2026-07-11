@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  checkApplicationIdentity,
   getAgreement,
   getQuiz,
   submitApplication,
@@ -9,6 +10,7 @@ import { AgreementPage } from './AgreementPage';
 import { ApplyPage } from './ApplyPage';
 import { QuizPage } from './QuizPage';
 import { ResultPage } from './ResultPage';
+import { ProgressLookup } from './ProgressLookup';
 import type {
   Agreement,
   ApplicationResult,
@@ -41,6 +43,7 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
   const [loadingConfig, setLoadingConfig] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [progressOpen, setProgressOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -80,15 +83,25 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, [step]);
 
-  function continueToAgreement(nextIdentity: Identity) {
+  async function continueToAgreement(nextIdentity: Identity) {
     if (!agreement) {
       setErrorMessage('协议尚未加载完成，请稍后再试。');
       return;
     }
 
-    setIdentity(nextIdentity);
-    setErrorMessage(null);
-    setStep('agreement');
+    try {
+      await checkApplicationIdentity(
+        nextIdentity.qqNumber,
+        nextIdentity.minecraftId,
+      );
+      setIdentity(nextIdentity);
+      setErrorMessage(null);
+      setStep('agreement');
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setErrorMessage(message);
+      window.alert(message);
+    }
   }
 
   function continueToQuiz() {
@@ -115,6 +128,7 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
         agreementVersion: agreement.version,
         agreementAccepted,
         answers: finalAnswers,
+        quizToken: quiz?.quizToken,
       });
 
       setAnswers(finalAnswers);
@@ -145,10 +159,15 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
             <small>{site.subtitle}</small>
           </span>
         </a>
-        <span className="system-status">
-          <i aria-hidden="true" />
-          {ui?.navigation.systemStatus ?? '审核系统在线'}
-        </span>
+        <div className="site-header-actions">
+          <button type="button" onClick={() => setProgressOpen(true)}>
+            查询申请进度
+          </button>
+          <span className="system-status">
+            <i aria-hidden="true" />
+            {ui?.navigation.systemStatus ?? '审核系统在线'}
+          </span>
+        </div>
       </header>
 
       <main className="page-frame">
@@ -223,6 +242,10 @@ export function PlayerApp({ site }: { site: PublicSiteConfig }) {
           </a>
         </p>
       </footer>
+
+      {progressOpen ? (
+        <ProgressLookup onClose={() => setProgressOpen(false)} />
+      ) : null}
     </div>
   );
 }

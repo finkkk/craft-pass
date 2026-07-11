@@ -59,7 +59,7 @@ export async function rejectApplication(
         status: ApplicationStatus.REJECTED,
         reviewerId: adminId,
         reviewedAt: new Date(),
-        rejectReason: reason,
+        rejectReason: reason || null,
       },
     });
 
@@ -68,7 +68,7 @@ export async function rejectApplication(
         adminId,
         action: AdminAction.REJECT_APPLICATION,
         targetApplicationId: applicationId,
-        detail: { reason },
+        detail: reason ? { reason } : { reason: null },
         ipAddress: metadata.ipAddress,
       },
     });

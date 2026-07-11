@@ -116,12 +116,6 @@ export async function getAdminDashboardSummary() {
   };
 }
 
-const activeApplicationStatuses = [
-  ApplicationStatus.PENDING_REVIEW,
-  ApplicationStatus.WHITELISTED,
-  ApplicationStatus.RCON_FAILED,
-] as const;
-
 interface AdminRecordOperationMetadata {
   ipAddress?: string;
 }
@@ -161,26 +155,37 @@ export async function updateAdminApplication(
 
     const minecraftIdNormalized = input.minecraftId.toLowerCase();
 
-    if (
-      activeApplicationStatuses.some(
-        (status) => status === current.status,
-      )
-    ) {
-      const duplicate = await transaction.application.findFirst({
-        where: {
-          id: { not: applicationId },
-          minecraftIdNormalized,
-          status: { in: [...activeApplicationStatuses] },
-        },
-        select: { id: true },
-      });
+    const conflicts = await transaction.application.findMany({
+      where: {
+        id: { not: applicationId },
+        OR: [
+          { qqNumber: input.qqNumber },
+          { minecraftIdNormalized },
+        ],
+      },
+      select: {
+        qqNumber: true,
+        minecraftIdNormalized: true,
+      },
+      take: 2,
+    });
 
-      if (duplicate) {
-        throw new ApplicationRecordOperationError(
-          'ACTIVE_APPLICATION_EXISTS',
-          '该 Minecraft ID 已存在有效申请',
-        );
-      }
+    if (conflicts.length > 0) {
+      const qqNumberDuplicate = conflicts.some(
+        (item) => item.qqNumber === input.qqNumber,
+      );
+      const minecraftIdDuplicate = conflicts.some(
+        (item) => item.minecraftIdNormalized === minecraftIdNormalized,
+      );
+      const label = qqNumberDuplicate && minecraftIdDuplicate
+        ? 'QQ 号和 Minecraft ID'
+        : qqNumberDuplicate
+          ? 'QQ 号'
+          : 'Minecraft ID';
+      throw new ApplicationRecordOperationError(
+        'IDENTITY_CONFLICT',
+        `${label}已被其他申请记录占用`,
+      );
     }
 
     const updated = await transaction.application.update({
@@ -189,6 +194,7 @@ export async function updateAdminApplication(
         qqNumber: input.qqNumber,
         minecraftId: input.minecraftId,
         minecraftIdNormalized,
+        identityLocked: true,
       },
     });
 
@@ -284,7 +290,7 @@ export class ApplicationRecordOperationError extends Error {
   constructor(
     readonly code:
       | 'APPLICATION_NOT_FOUND'
-      | 'ACTIVE_APPLICATION_EXISTS'
+      | 'IDENTITY_CONFLICT'
       | 'RCON_OPERATION_IN_PROGRESS',
     message: string,
   ) {

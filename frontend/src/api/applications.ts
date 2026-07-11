@@ -1,20 +1,15 @@
 import type {
   Agreement,
+  ApplicationProgress,
   ApplicationResult,
   ApplicationSubmission,
   Quiz,
   UiContent,
 } from '../types/application';
-
-interface ApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-  };
-}
+import { requestJson } from './client';
 
 export async function getAgreement() {
-  return request<{
+  return requestJson<{
     agreement: Agreement;
     ui: UiContent;
     application: { submissionsEnabled: boolean };
@@ -22,11 +17,11 @@ export async function getAgreement() {
 }
 
 export function getQuiz() {
-  return request<Quiz>('/api/quiz');
+  return requestJson<Quiz>('/api/quiz');
 }
 
 export function submitApplication(payload: ApplicationSubmission) {
-  return request<ApplicationResult>('/api/applications', {
+  return requestJson<ApplicationResult>('/api/applications', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -35,33 +30,24 @@ export function submitApplication(payload: ApplicationSubmission) {
   });
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
+export function queryApplicationProgress(
+  qqNumber: string,
+  minecraftId: string,
+) {
+  return requestJson<ApplicationProgress>('/api/applications/status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ qqNumber, minecraftId }),
+  });
+}
 
-  try {
-    response = await fetch(path, init);
-  } catch {
-    throw new Error('无法连接服务器，请确认后端服务已经启动。');
-  }
-
-  const body = (await response.json().catch(() => null)) as
-    | T
-    | ApiErrorBody
-    | null;
-
-  if (!response.ok) {
-    const message =
-      body &&
-      typeof body === 'object' &&
-      'error' in body
-        ? body.error?.message
-        : undefined;
-    throw new Error(message ?? `请求失败（HTTP ${response.status}）`);
-  }
-
-  if (!body) {
-    throw new Error('服务器返回了无法识别的响应。');
-  }
-
-  return body as T;
+export function checkApplicationIdentity(
+  qqNumber: string,
+  minecraftId: string,
+) {
+  return requestJson<{ available: true }>('/api/applications/identity-check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ qqNumber, minecraftId }),
+  });
 }

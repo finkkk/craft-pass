@@ -66,6 +66,7 @@ export function AdminSettingsPage() {
     try {
       const updated = await updateAdminSettings({
         site: settings.site,
+        server: { port: settings.server.port },
         application: settings.application,
         rcon: {
           enabled: settings.rcon.enabled,
@@ -84,7 +85,11 @@ export function AdminSettingsPage() {
       setSettings(updated);
       setRconPassword('');
       setRconStatus(await getRconStatus().catch(() => null));
-      setMessage('系统配置已保存，新配置会立即用于后续请求。');
+      setMessage(
+        updated.server.restartRequired
+          ? `系统配置已保存。HTTP 端口将在重启服务后改为 ${updated.server.port}。`
+          : '系统配置已保存，新配置会立即用于后续请求。',
+      );
     } catch (saveError) {
       setError(getMessage(saveError));
     } finally {
@@ -171,7 +176,17 @@ export function AdminSettingsPage() {
                 tone={
                   settings.application.submissionsEnabled ? 'green' : 'red'
                 }
-                detail={`失败冷却 ${settings.application.quizFailCooldownMinutes} 分钟`}
+                detail="QQ 与 Minecraft ID 全状态唯一"
+              />
+              <StatusCard
+                label="HTTP 服务"
+                value={`:${settings.server.activePort}`}
+                tone={settings.server.restartRequired ? 'red' : 'green'}
+                detail={
+                  settings.server.restartRequired
+                    ? `重启后改为 :${settings.server.port}`
+                    : '当前监听端口'
+                }
               />
               <StatusCard
                 label="题库状态"
@@ -208,9 +223,53 @@ export function AdminSettingsPage() {
                 <header>
                   <div>
                     <p>01</p>
-                    <h2>申请入口与频率限制</h2>
+                    <h2>HTTP 服务端口</h2>
                   </div>
-                  <span>控制玩家是否可以提交申请，以及失败重试和短时间重复提交。</span>
+                  <span>修改后需要重启 Craft Pass 服务，新的访问地址才会生效。</span>
+                </header>
+                <div className="settings-fields">
+                  <SettingsField
+                    label="网页与 API 端口"
+                    help={`当前正在使用 ${settings.server.activePort}；有效范围 1–65535`}
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={65535}
+                      value={settings.server.port}
+                      onChange={(event) =>
+                        setSettings((current) =>
+                          current
+                            ? {
+                                ...current,
+                                server: {
+                                  ...current.server,
+                                  port: Number(event.target.value),
+                                },
+                              }
+                            : current,
+                        )
+                      }
+                      required
+                    />
+                  </SettingsField>
+                  {settings.server.restartRequired ? (
+                    <p className="settings-restart-notice">
+                      已保存的端口为 {settings.server.port}，请重启服务后访问
+                      {' '}
+                      <code>http://localhost:{settings.server.port}</code>。
+                    </p>
+                  ) : null}
+                </div>
+              </section>
+
+              <section>
+                <header>
+                  <div>
+                    <p>02</p>
+                    <h2>申请入口与 IP 频率限制</h2>
+                  </div>
+                  <span>QQ 与 Minecraft ID 会全状态查重；这里额外限制同一 IP 的短时间提交。</span>
                 </header>
                 <div className="settings-fields">
                   <label className="setup-toggle">
@@ -232,27 +291,8 @@ export function AdminSettingsPage() {
 
                   <div className="settings-fields rate-limit-grid">
                     <SettingsField
-                      label="答题失败冷却（分钟）"
-                      help="0 表示不启用失败冷却"
-                    >
-                      <input
-                        type="number"
-                        min={0}
-                        max={10080}
-                        value={settings.application.quizFailCooldownMinutes}
-                        onChange={(event) =>
-                          updateApplication({
-                            quizFailCooldownMinutes: Number(
-                              event.target.value,
-                            ),
-                          })
-                        }
-                        required
-                      />
-                    </SettingsField>
-                    <SettingsField
                       label="提交统计时段（分钟）"
-                      help="下面三个“最大提交”都按这个时间段统计，不是答题限时"
+                      help="同 IP 最大提交数按这个时间段统计，不是答题限时"
                     >
                       <input
                         type="number"
@@ -284,44 +324,6 @@ export function AdminSettingsPage() {
                         required
                       />
                     </SettingsField>
-                    <SettingsField
-                      label="同 QQ 最大提交"
-                      help="在统计时段内最多允许提交几次"
-                    >
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={settings.application.maxSubmissionsPerQq}
-                        onChange={(event) =>
-                          updateApplication({
-                            maxSubmissionsPerQq: Number(event.target.value),
-                          })
-                        }
-                        required
-                      />
-                    </SettingsField>
-                    <SettingsField
-                      label="同 Minecraft ID 最大提交"
-                      help="在统计时段内最多允许提交几次"
-                    >
-                      <input
-                        type="number"
-                        min={1}
-                        max={100}
-                        value={
-                          settings.application.maxSubmissionsPerMinecraftId
-                        }
-                        onChange={(event) =>
-                          updateApplication({
-                            maxSubmissionsPerMinecraftId: Number(
-                              event.target.value,
-                            ),
-                          })
-                        }
-                        required
-                      />
-                    </SettingsField>
                   </div>
                 </div>
               </section>
@@ -329,7 +331,7 @@ export function AdminSettingsPage() {
               <section>
                 <header>
                   <div>
-                    <p>02</p>
+                    <p>03</p>
                     <h2>RCON 连接</h2>
                   </div>
                   <span>密码永远不会从后端返回，留空表示保持原密码。</span>
@@ -445,7 +447,7 @@ export function AdminSettingsPage() {
               <section>
                 <header>
                   <div>
-                    <p>03</p>
+                    <p>04</p>
                     <h2>自定义命令安全</h2>
                   </div>
                   <span>用于 RCON 控制台；白名单审核命令不受此开关影响。</span>

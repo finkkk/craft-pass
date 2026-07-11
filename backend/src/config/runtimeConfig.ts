@@ -49,6 +49,10 @@ export interface RuntimeApplicationConfig {
   maxSubmissionsPerMinecraftId: number;
 }
 
+export interface RuntimeServerConfig {
+  port: number;
+}
+
 export const defaultApplicationConfig: RuntimeApplicationConfig = {
   submissionsEnabled: true,
   quizFailCooldownMinutes: 0,
@@ -96,6 +100,7 @@ function normalizeRconConfig(
 
 interface StoredRuntimeConfig {
   version: 1;
+  server?: RuntimeServerConfig;
   site: {
     name: string;
     subtitle: string;
@@ -105,9 +110,13 @@ interface StoredRuntimeConfig {
   configuredAt: string;
 }
 
+let cachedRuntimeConfig: StoredRuntimeConfig | null | undefined;
+let cachedEncryptionKey: Buffer | undefined;
+
 export interface SetupRuntimeConfigInput {
   siteName: string;
   siteSubtitle: string;
+  server?: RuntimeServerConfig;
   rcon: RuntimeRconConfig;
   application?: RuntimeApplicationConfig;
 }
@@ -115,6 +124,7 @@ export interface SetupRuntimeConfigInput {
 export interface UpdateRuntimeConfigInput {
   siteName: string;
   siteSubtitle: string;
+  server: RuntimeServerConfig;
   rcon: Omit<RuntimeRconConfig, 'password'> & {
     password?: string;
   };
@@ -125,10 +135,18 @@ export function hasRuntimeConfig() {
   return existsSync(runtimeConfigPath);
 }
 
+export function getEffectiveHttpPort() {
+  return readRuntimeConfig()?.server?.port ?? env.port;
+}
+
+// A saved port change only takes effect on the next process start.
+export const startupHttpPort = getEffectiveHttpPort();
+
 export function saveRuntimeConfig(input: SetupRuntimeConfigInput) {
   ensureDataDirectory();
   const storedConfig: StoredRuntimeConfig = {
     version: 1,
+    server: input.server ?? { port: env.port },
     site: {
       name: input.siteName,
       subtitle: input.siteSubtitle,
@@ -153,6 +171,7 @@ export function saveRuntimeConfig(input: SetupRuntimeConfigInput) {
     encoding: 'utf8',
   });
   renameSync(temporaryPath, runtimeConfigPath);
+  cachedRuntimeConfig = storedConfig;
 }
 
 export function getPublicSiteConfig() {
@@ -197,6 +216,12 @@ export function getAdminRuntimeConfig() {
 
   return {
     source: storedConfig ? ('runtime' as const) : ('environment' as const),
+    server: {
+      port: storedConfig?.server?.port ?? env.port,
+      activePort: startupHttpPort,
+      restartRequired:
+        (storedConfig?.server?.port ?? env.port) !== startupHttpPort,
+    },
     site: getPublicSiteConfig(),
     application,
     rcon: {
@@ -224,6 +249,7 @@ export function updateRuntimeConfig(input: UpdateRuntimeConfigInput) {
   saveRuntimeConfig({
     siteName: input.siteName,
     siteSubtitle: input.siteSubtitle,
+    server: input.server,
     application: input.application,
     rcon: {
       ...input.rcon,
@@ -284,11 +310,18 @@ export function resetRuntimeConfigFiles() {
   rmSync(runtimeConfigPath, { force: true });
   rmSync(setupTokenPath, { force: true });
   rmSync(encryptionKeyPath, { force: true });
+  cachedRuntimeConfig = null;
+  cachedEncryptionKey = undefined;
 }
 
 function readRuntimeConfig(): StoredRuntimeConfig | null {
+  if (cachedRuntimeConfig !== undefined) {
+    return cachedRuntimeConfig;
+  }
+
   if (!existsSync(runtimeConfigPath)) {
-    return null;
+    cachedRuntimeConfig = null;
+    return cachedRuntimeConfig;
   }
 
   const parsed = JSON.parse(
@@ -299,11 +332,12 @@ function readRuntimeConfig(): StoredRuntimeConfig | null {
     throw new Error('不支持的运行时配置版本');
   }
 
-  return {
+  cachedRuntimeConfig = {
     ...parsed,
     application: parsed.application ?? defaultApplicationConfig,
     rcon: normalizeRconConfig(parsed.rcon),
   };
+  return cachedRuntimeConfig;
 }
 
 function encryptSecret(value: string) {
@@ -352,8 +386,13 @@ function decryptSecret(value: string) {
 }
 
 function getEncryptionKey() {
+  if (cachedEncryptionKey) {
+    return cachedEncryptionKey;
+  }
+
   if (env.appSecret) {
-    return createHash('sha256').update(env.appSecret).digest();
+    cachedEncryptionKey = createHash('sha256').update(env.appSecret).digest();
+    return cachedEncryptionKey;
   }
 
   ensureDataDirectory();
@@ -365,9 +404,14 @@ function getEncryptionKey() {
     });
   }
 
-  return createHash('sha256')
+  cachedEncryptionKey = createHash('sha256')
     .update(readFileSync(encryptionKeyPath, 'utf8').trim())
     .digest();
+  return cachedEncryptionKey;
+}
+
+export function getApplicationSigningKey() {
+  return Buffer.from(getEncryptionKey());
 }
 
 function ensureDataDirectory() {

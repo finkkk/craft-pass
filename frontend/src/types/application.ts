@@ -102,6 +102,8 @@ export interface QuizQuestion {
 export interface Quiz {
   passingScore: number;
   questionCount: number;
+  questionBankCount: number;
+  quizToken: string;
   questions: QuizQuestion[];
 }
 
@@ -111,6 +113,7 @@ export interface ApplicationSubmission {
   agreementVersion: string;
   agreementAccepted: boolean;
   answers: Record<string, string>;
+  quizToken?: string;
 }
 
 export interface ApplicationResult {
@@ -121,4 +124,18 @@ export interface ApplicationResult {
   score: number;
   passed: boolean;
   submittedAt: string;
+}
+
+export interface ApplicationProgress {
+  minecraftId: string;
+  status:
+    | 'quiz_failed'
+    | 'pending_review'
+    | 'rejected'
+    | 'whitelisted'
+    | 'rcon_failed';
+  score: number;
+  rejectReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
 }

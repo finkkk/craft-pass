@@ -3,16 +3,27 @@ import { z } from 'zod';
 import { getContentConfig } from '../../config/contentConfig.js';
 import { getEffectiveApplicationConfig } from '../../config/runtimeConfig.js';
 import { toPublicApplicationStatus } from '../../domain/applicationStatus.js';
-import { applicationSubmissionRateLimiter } from '../../middleware/security.js';
-import { createApplicationSchema } from '../../schemas/application.js';
+import {
+  applicationStatusRateLimiter,
+  applicationSubmissionRateLimiter,
+} from '../../middleware/security.js';
+import {
+  applicationIdentitySchema,
+  createApplicationSchema,
+} from '../../schemas/application.js';
 import {
   AgreementVersionOutdatedError,
-  ApplicationCooldownError,
   ApplicationRateLimitError,
   ApplicationSubmissionsDisabledError,
+  assertIdentityAvailable,
   createApplication,
-  DuplicateActiveApplicationError,
+  IdentityConflictError,
+  queryApplicationStatus,
 } from '../../services/applicationService.js';
+import {
+  createQuizToken,
+  QuizSelectionInvalidError,
+} from '../../services/quizSelectionService.js';
 import { HttpError } from '../../utils/HttpError.js';
 
 export const applicationsRouter = Router();
@@ -30,18 +41,78 @@ applicationsRouter.get('/agreement', (_request, response) => {
 
 applicationsRouter.get('/quiz', (_request, response) => {
   const { quiz } = getContentConfig();
-  const questions = shuffle(
-    quiz.questions.map(({ correctOptionId: _correctOptionId, ...question }) => ({
+  const selectedQuestions = shuffle(quiz.questions).slice(
+    0,
+    quiz.randomQuestionCount ?? quiz.questions.length,
+  );
+  const questions = selectedQuestions.map(
+    ({ correctOptionId: _correctOptionId, ...question }) => ({
       ...question,
-    })),
+    }),
   );
 
   response.json({
     passingScore: quiz.passingScore,
-    questionCount: quiz.questions.length,
+    questionCount: questions.length,
+    questionBankCount: quiz.questions.length,
+    quizToken: createQuizToken(selectedQuestions.map((question) => question.id)),
     questions,
   });
 });
+
+applicationsRouter.post(
+  '/applications/identity-check',
+  applicationStatusRateLimiter,
+  async (request, response) => {
+    const result = applicationIdentitySchema.safeParse(request.body);
+    if (!result.success) {
+      throw new HttpError(400, 'VALIDATION_ERROR', '玩家身份格式不正确');
+    }
+
+    try {
+      await assertIdentityAvailable(
+        result.data.qqNumber,
+        result.data.minecraftId,
+      );
+      response.json({ available: true });
+    } catch (error) {
+      throw mapIdentityConflict(error);
+    }
+  },
+);
+
+applicationsRouter.post(
+  '/applications/status',
+  applicationStatusRateLimiter,
+  async (request, response) => {
+    const result = applicationIdentitySchema.safeParse(request.body);
+    if (!result.success) {
+      throw new HttpError(400, 'VALIDATION_ERROR', '查询信息格式不正确');
+    }
+
+    const application = await queryApplicationStatus(
+      result.data.qqNumber,
+      result.data.minecraftId,
+    );
+    if (!application) {
+      throw new HttpError(
+        404,
+        'APPLICATION_STATUS_NOT_FOUND',
+        'QQ 号与 Minecraft ID 不匹配，或申请记录不存在',
+      );
+    }
+
+    response.json({
+      minecraftId: application.minecraftId,
+      status: toPublicApplicationStatus(application.status),
+      score: application.score,
+      rejectReason:
+        application.status === 'REJECTED' ? application.rejectReason : null,
+      submittedAt: application.createdAt.toISOString(),
+      reviewedAt: application.reviewedAt?.toISOString() ?? null,
+    });
+  },
+);
 
 applicationsRouter.post(
   '/applications',
@@ -100,15 +171,8 @@ applicationsRouter.post(
         );
       }
 
-      if (error instanceof DuplicateActiveApplicationError) {
-        throw new HttpError(
-          409,
-          'ACTIVE_APPLICATION_EXISTS',
-          error.message,
-          {
-            currentStatus: toPublicApplicationStatus(error.currentStatus),
-          },
-        );
+      if (error instanceof IdentityConflictError) {
+        throw mapIdentityConflict(error);
       }
 
       if (error instanceof ApplicationSubmissionsDisabledError) {
@@ -119,22 +183,31 @@ applicationsRouter.post(
         );
       }
 
-      if (error instanceof ApplicationCooldownError) {
-        throw new HttpError(429, 'APPLICATION_COOLDOWN_ACTIVE', error.message, {
-          retryAt: error.retryAt.toISOString(),
-        });
-      }
-
       if (error instanceof ApplicationRateLimitError) {
         throw new HttpError(429, 'APPLICATION_RATE_LIMIT_ACTIVE', error.message, {
           dimension: error.dimension,
         });
       }
 
+      if (error instanceof QuizSelectionInvalidError) {
+        throw new HttpError(400, 'QUIZ_SELECTION_INVALID', error.message);
+      }
+
       throw error;
     }
   },
 );
+
+function mapIdentityConflict(error: unknown) {
+  if (!(error instanceof IdentityConflictError)) {
+    return error;
+  }
+
+  return new HttpError(409, 'IDENTITY_CONFLICT', error.message, {
+    qqNumberDuplicate: error.qqNumberDuplicate,
+    minecraftIdDuplicate: error.minecraftIdDuplicate,
+  });
+}
 
 function shuffle<T>(items: readonly T[]) {
   const shuffled = [...items];

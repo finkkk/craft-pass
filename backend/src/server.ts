@@ -1,15 +1,17 @@
 import { createApp } from './app.js';
-import { env } from './config/env.js';
+import { startupHttpPort } from './config/runtimeConfig.js';
 import { initializeSetupBootstrap } from './services/setupService.js';
+import { startVersionCheckScheduler } from './services/versionCheckService.js';
 
 async function startServer() {
   await initializeSetupBootstrap();
 
   const app = createApp();
-  const server = app.listen(env.port, () => {
-    console.log(`Craft Pass 已启动：http://localhost:${env.port}`);
+  startVersionCheckScheduler();
+  const server = app.listen(startupHttpPort, () => {
+    console.log(`Craft Pass 已启动：http://localhost:${startupHttpPort}`);
     console.log(
-      `健康检查：http://localhost:${env.port}/api/health`,
+      `健康检查：http://localhost:${startupHttpPort}/api/health`,
     );
   });
 

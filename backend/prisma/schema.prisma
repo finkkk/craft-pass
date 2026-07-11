@@ -53,6 +53,7 @@ model Application {
   reviewedAt            DateTime?         @map("reviewed_at")
   reviewerId            String?           @map("reviewer_id")
   rejectReason          String?           @map("reject_reason")
+  identityLocked        Boolean           @default(false) @map("identity_locked")
   ipAddress             String?           @map("ip_address")
   userAgent             String?           @map("user_agent")
   answersJson           Json              @map("answers_json")

@@ -12,6 +12,7 @@ import {
   ReviewOperationError,
 } from '../src/services/reviewService.js';
 import type { RconExecutor } from '../src/services/rconService.js';
+import { shouldSkipGlobalRateLimit } from '../src/middleware/security.js';
 
 let server: Server;
 let baseUrl: string;
@@ -66,6 +67,14 @@ test('健康检查返回服务状态与安全响应头', async () => {
   );
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
   assert.match(response.headers.get('x-request-id') ?? '', /^[\da-f-]{36}$/);
+});
+
+test('普通读取请求不会消耗全局写操作限流额度', () => {
+  assert.equal(shouldSkipGlobalRateLimit({ method: 'GET' }), true);
+  assert.equal(shouldSkipGlobalRateLimit({ method: 'HEAD' }), true);
+  assert.equal(shouldSkipGlobalRateLimit({ method: 'OPTIONS' }), true);
+  assert.equal(shouldSkipGlobalRateLimit({ method: 'POST' }), false);
+  assert.equal(shouldSkipGlobalRateLimit({ method: 'PATCH' }), false);
 });
 
 test('首次部署必须使用控制台令牌，完成后入口自动锁定', async () => {
@@ -207,6 +216,8 @@ test('题目接口不泄露正确答案', async () => {
 
   assert.equal(response.status, 200);
   assert.equal(body.questionCount, 10);
+  assert.equal(body.questionBankCount, 10);
+  assert.match(body.quizToken, /^[^.]+\.[A-Za-z0-9_-]+$/);
   assert.equal(body.passingScore, 80);
 
   for (const question of body.questions) {
@@ -263,9 +274,18 @@ test('答题失败会写入记录，但不会返回正确答案', async () => {
 
   assert.equal(storedApplication?.passedQuiz, false);
   assert.equal(storedApplication?.status, ApplicationStatus.QUIZ_FAILED);
+
+  const duplicateAfterFailure = await postApplication({
+    ...buildValidApplicationPayload('FailRetry'),
+    qqNumber: payload.qqNumber,
+  });
+  const duplicateBody = await duplicateAfterFailure.json();
+  assert.equal(duplicateAfterFailure.status, 409);
+  assert.equal(duplicateBody.error.code, 'IDENTITY_CONFLICT');
+  assert.equal(duplicateBody.error.details.qqNumberDuplicate, true);
 });
 
-test('满分申请进入待审核，活跃申请不能重复提交', async () => {
+test('满分申请进入待审核，QQ 与 Minecraft ID 均不能重复绑定', async () => {
   const payload = buildValidApplicationPayload('PendingPlayer');
   const firstResponse = await postApplication(payload);
   const firstBody = await firstResponse.json();
@@ -280,11 +300,68 @@ test('满分申请进入待审核，活跃申请不能重复提交', async () =>
   const duplicateBody = await duplicateResponse.json();
 
   assert.equal(duplicateResponse.status, 409);
-  assert.equal(duplicateBody.error.code, 'ACTIVE_APPLICATION_EXISTS');
-  assert.equal(
-    duplicateBody.error.details.currentStatus,
-    'pending_review',
+  assert.equal(duplicateBody.error.code, 'IDENTITY_CONFLICT');
+  assert.equal(duplicateBody.error.details.qqNumberDuplicate, true);
+  assert.equal(duplicateBody.error.details.minecraftIdDuplicate, true);
+
+  const qqConflictResponse = await postApplication({
+    ...buildValidApplicationPayload('DifferentPlayer'),
+    qqNumber: payload.qqNumber,
+  });
+  const qqConflict = await qqConflictResponse.json();
+  assert.equal(qqConflict.error.details.qqNumberDuplicate, true);
+  assert.equal(qqConflict.error.details.minecraftIdDuplicate, false);
+
+  const minecraftConflictResponse = await postApplication({
+    ...buildValidApplicationPayload('PendingPlayer'),
+    qqNumber: '799999999',
+  });
+  const minecraftConflict = await minecraftConflictResponse.json();
+  assert.equal(minecraftConflict.error.details.qqNumberDuplicate, false);
+  assert.equal(minecraftConflict.error.details.minecraftIdDuplicate, true);
+
+  const precheckResponse = await fetch(
+    `${baseUrl}/api/applications/identity-check`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        qqNumber: payload.qqNumber,
+        minecraftId: 'PrecheckPlayer',
+      }),
+    },
   );
+  const precheck = await precheckResponse.json();
+  assert.equal(precheckResponse.status, 409);
+  assert.equal(precheck.error.code, 'IDENTITY_CONFLICT');
+  assert.equal(precheck.error.details.qqNumberDuplicate, true);
+});
+
+test('玩家可以使用 QQ 与 Minecraft ID 查询申请进度', async () => {
+  const response = await fetch(`${baseUrl}/api/applications/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      qqNumber: buildValidApplicationPayload('PendingPlayer').qqNumber,
+      minecraftId: 'pendingplayer',
+    }),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.minecraftId, 'PendingPlayer');
+  assert.equal(body.status, 'pending_review');
+  assert.equal(body.rejectReason, null);
+
+  const invalidResponse = await fetch(`${baseUrl}/api/applications/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      qqNumber: '799999998',
+      minecraftId: 'PendingPlayer',
+    }),
+  });
+  assert.equal(invalidResponse.status, 404);
 });
 
 test('未登录不能访问管理员接口', async () => {
@@ -388,6 +465,8 @@ test('管理员可以更新站点与 RCON 配置且密码不会回显', async ()
 
   assert.equal(initialResponse.status, 200);
   assert.equal(initial.site.name, 'Craft Pass Test');
+  assert.equal(initial.server.port, initial.server.activePort);
+  assert.equal(initial.server.restartRequired, false);
   assert.equal(initial.application.submissionsEnabled, true);
   assert.equal(initial.rcon.customCommandsEnabled, true);
   assert.equal('password' in initial.rcon, false);
@@ -424,6 +503,9 @@ test('管理员可以更新站点与 RCON 配置且密码不会回显', async ()
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
+      server: {
+        port: initial.server.port === 65_535 ? 47_820 : initial.server.port + 1,
+      },
       site: {
         name: 'Updated Craft Pass',
         subtitle: '更新后的测试站点',
@@ -449,6 +531,8 @@ test('管理员可以更新站点与 RCON 配置且密码不会回显', async ()
 
   assert.equal(response.status, 200);
   assert.equal(body.site.name, 'Updated Craft Pass');
+  assert.notEqual(body.server.port, body.server.activePort);
+  assert.equal(body.server.restartRequired, true);
   assert.equal(body.application.maxSubmissionsPerQq, 15);
   assert.equal(body.rcon.host, '192.0.2.10');
   assert.deepEqual(body.rcon.blockedCommands, ['stop', 'op']);
@@ -460,7 +544,7 @@ test('管理员可以更新站点与 RCON 配置且密码不会回显', async ()
   assert.equal(publicConfig.name, 'Updated Craft Pass');
 });
 
-test('系统配置可以控制申请入口、失败冷却和提交频率', async () => {
+test('系统配置可以控制申请入口和 IP 提交频率', async () => {
   const headers = {
     Cookie: adminCookie,
     'Content-Type': 'application/json',
@@ -514,59 +598,37 @@ test('系统配置可以控制申请入口、失败冷却和提交频率', async
       'APPLICATION_SUBMISSIONS_DISABLED',
     );
 
-    await saveSettings({
-      ...originalSettings.application,
-      submissionsEnabled: true,
-      quizFailCooldownMinutes: 60,
-      maxSubmissionsPerQq: 20,
-      maxSubmissionsPerMinecraftId: 20,
+    const knownIp = await prisma.application.findFirstOrThrow({
+      where: { ipAddress: { not: null } },
+      select: { ipAddress: true },
     });
-    const failedPayload = {
-      ...buildValidApplicationPayload('CooldownFail'),
-      qqNumber: '423456789',
-      answers: buildAnswers(0),
-    };
-    const failedResponse = await postApplication(failedPayload);
-    const failedBody = await failedResponse.json();
-    createdApplicationIds.push(failedBody.applicationId);
-    assert.equal(failedResponse.status, 201);
-
-    const cooldownResponse = await postApplication({
-      ...buildValidApplicationPayload('CooldownRetry'),
-      qqNumber: '423456789',
+    const currentIpCount = await prisma.application.count({
+      where: { ipAddress: knownIp.ipAddress },
     });
-    const cooldownBody = await cooldownResponse.json();
-    assert.equal(cooldownResponse.status, 429);
-    assert.equal(cooldownBody.error.code, 'APPLICATION_COOLDOWN_ACTIVE');
-    assert.match(cooldownBody.error.details.retryAt, /^\d{4}-/);
 
     await saveSettings({
       ...originalSettings.application,
       submissionsEnabled: true,
-      quizFailCooldownMinutes: 0,
       rateLimitWindowMinutes: 60,
-      maxSubmissionsPerQq: 1,
-      maxSubmissionsPerMinecraftId: 20,
+      maxSubmissionsPerIp: currentIpCount + 1,
     });
-    const rateLimitedFirstResponse = await postApplication({
-      ...buildValidApplicationPayload('RateLimitOne'),
-      qqNumber: '523456789',
-    });
+    const rateLimitedFirstResponse = await postApplication(
+      buildValidApplicationPayload('RateLimitOne'),
+    );
     const rateLimitedFirstBody = await rateLimitedFirstResponse.json();
     createdApplicationIds.push(rateLimitedFirstBody.applicationId);
     assert.equal(rateLimitedFirstResponse.status, 201);
 
-    const rateLimitedSecondResponse = await postApplication({
-      ...buildValidApplicationPayload('RateLimitTwo'),
-      qqNumber: '523456789',
-    });
+    const rateLimitedSecondResponse = await postApplication(
+      buildValidApplicationPayload('RateLimitTwo'),
+    );
     const rateLimitedSecondBody = await rateLimitedSecondResponse.json();
     assert.equal(rateLimitedSecondResponse.status, 429);
     assert.equal(
       rateLimitedSecondBody.error.code,
       'APPLICATION_RATE_LIMIT_ACTIVE',
     );
-    assert.equal(rateLimitedSecondBody.error.details.dimension, 'QQ 号');
+    assert.equal(rateLimitedSecondBody.error.details.dimension, 'IP 地址');
   } finally {
     await saveSettings(originalSettings.application);
     await prisma.application.deleteMany({
@@ -667,6 +729,7 @@ test('管理员可以自定义服规与题库且公开接口不会泄露答案',
     },
     quiz: {
       passingScore: 50,
+      randomQuestionCount: 1,
       questions: [
         {
           id: 'custom_q1',
@@ -714,7 +777,8 @@ test('管理员可以自定义服规与题库且公开接口不会泄露答案',
 
     const quizResponse = await fetch(`${baseUrl}/api/quiz`);
     const quizBody = await quizResponse.json();
-    assert.equal(quizBody.questionCount, 2);
+    assert.equal(quizBody.questionCount, 1);
+    assert.equal(quizBody.questionBankCount, 2);
     assert.equal(quizBody.passingScore, 50);
     assert.equal(
       'correctOptionId' in quizBody.questions[0],
@@ -775,21 +839,23 @@ test('管理员可以自定义服规与题库且公开接口不会泄露答案',
       'custom-test-v2',
     );
 
+    const selectedQuestionId = quizBody.questions[0].id as string;
+    const correctOptionId = customContent.quiz.questions.find(
+      (question) => question.id === selectedQuestionId,
+    )!.correctOptionId;
     const applicationResponse = await postApplication({
       qqNumber: '323456789',
       minecraftId: 'CustomQuizPlayer',
       agreementVersion: 'custom-test-v2',
       agreementAccepted: true,
-      answers: {
-        custom_q1: 'B',
-        custom_q2: 'B',
-      },
+      quizToken: quizBody.quizToken,
+      answers: { [selectedQuestionId]: correctOptionId },
     });
     const applicationBody = await applicationResponse.json();
     customApplicationId = applicationBody.applicationId;
 
     assert.equal(applicationResponse.status, 201);
-    assert.equal(applicationBody.score, 50);
+    assert.equal(applicationBody.score, 100);
     assert.equal(applicationBody.passed, true);
 
     const updateLog = await prisma.adminLog.findFirstOrThrow({
@@ -889,7 +955,7 @@ test('管理员可以修改并删除申请记录，操作日志保留快照', as
   );
   const duplicateBody = await duplicateResponse.json();
   assert.equal(duplicateResponse.status, 409);
-  assert.equal(duplicateBody.error.code, 'ACTIVE_APPLICATION_EXISTS');
+  assert.equal(duplicateBody.error.code, 'IDENTITY_CONFLICT');
 
   const updateResponse = await fetch(
     `${baseUrl}/api/admin/applications/${created.applicationId}`,
@@ -938,6 +1004,19 @@ test('管理员可以修改并删除申请记录，操作日志保留快照', as
     }),
     null,
   );
+
+  const releasedIdentityResponse = await fetch(
+    `${baseUrl}/api/applications/identity-check`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        qqNumber: '223456789',
+        minecraftId: 'ManagedPlayer',
+      }),
+    },
+  );
+  assert.equal(releasedIdentityResponse.status, 200);
 
   const deleteLog = await prisma.adminLog.findFirstOrThrow({
     where: { action: 'DELETE_APPLICATION' },
@@ -1081,7 +1160,7 @@ test('模拟 RCON 成功后申请进入白名单并保存执行记录', async ()
   assert.match(attempt.response ?? '', /whitelist add PendingPlayer/);
 });
 
-test('拒绝接口要求原因并记录审核状态', async () => {
+test('拒绝接口记录可供玩家查询的拒绝原因', async () => {
   const createResponse = await postApplication(
     buildValidApplicationPayload('RejectPlayer'),
   );
@@ -1108,6 +1187,52 @@ test('拒绝接口要求原因并记录审核状态', async () => {
   });
   assert.equal(application.rejectReason, '测试拒绝原因');
   assert.equal(application.reviewerId, adminId);
+
+  const progressResponse = await fetch(`${baseUrl}/api/applications/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      qqNumber: buildValidApplicationPayload('RejectPlayer').qqNumber,
+      minecraftId: 'RejectPlayer',
+    }),
+  });
+  const progress = await progressResponse.json();
+  assert.equal(progress.status, 'rejected');
+  assert.equal(progress.rejectReason, '测试拒绝原因');
+});
+
+test('管理员可以批量拒绝申请且拒绝原因可以留空', async () => {
+  const first = await (await postApplication(
+    buildValidApplicationPayload('BatchRejectOne'),
+  )).json();
+  const second = await (await postApplication(
+    buildValidApplicationPayload('BatchRejectTwo'),
+  )).json();
+
+  const response = await fetch(`${baseUrl}/api/admin/applications/batch-review`, {
+    method: 'POST',
+    headers: {
+      Cookie: adminCookie,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      action: 'reject',
+      applicationIds: [first.applicationId, second.applicationId, 'missing-id'],
+    }),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.succeeded, 2);
+  assert.equal(body.failed, 1);
+  const applications = await prisma.application.findMany({
+    where: { id: { in: [first.applicationId, second.applicationId] } },
+  });
+  assert.ok(applications.every((item) => item.status === ApplicationStatus.REJECTED));
+  assert.ok(applications.every((item) => item.rejectReason === null));
+  await prisma.application.deleteMany({
+    where: { id: { in: [first.applicationId, second.applicationId] } },
+  });
 });
 
 test('RCON 失败会保留失败状态，重试成功后进入白名单', async () => {
@@ -1288,9 +1413,19 @@ test('管理员可以恢复出厂设置并重新进入部署流程', async () =>
   assert.equal(completeBody.admin.username, 'reset_admin');
 });
 
+let nextTestQqNumber = 600_000_000;
+const testQqByMinecraftId = new Map<string, string>();
+
 function buildValidApplicationPayload(minecraftId: string) {
+  let qqNumber = testQqByMinecraftId.get(minecraftId.toLowerCase());
+  if (!qqNumber) {
+    qqNumber = String(nextTestQqNumber);
+    nextTestQqNumber += 1;
+    testQqByMinecraftId.set(minecraftId.toLowerCase(), qqNumber);
+  }
+
   return {
-    qqNumber: '123456789',
+    qqNumber,
     minecraftId,
     agreementVersion: agreement.version,
     agreementAccepted: true,

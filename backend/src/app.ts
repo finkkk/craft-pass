@@ -4,11 +4,13 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { sep } from 'node:path';
 import { env } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { requestContext } from './middleware/requestContext.js';
 import {
+  apiReadRateLimiter,
   apiRateLimiter,
   createCorsOptions,
 } from './middleware/security.js';
@@ -33,13 +35,28 @@ export function createApp() {
   app.use(cors(createCorsOptions(env.corsOrigins)));
   app.use(cookieParser());
   app.use(express.json({ limit: '1mb' }));
-  app.use('/api', apiRateLimiter);
+  app.use('/api', apiReadRateLimiter, apiRateLimiter);
 
   app.use('/api', publicRouter);
   app.use('/api/admin', adminRouter);
 
   if (existsSync(frontendIndexFile)) {
-    app.use(express.static(frontendDistDirectory, { index: false }));
+    app.use(
+      express.static(frontendDistDirectory, {
+        index: false,
+        etag: true,
+        setHeaders(response, filePath) {
+          if (filePath.includes(`${sep}assets${sep}`)) {
+            response.setHeader(
+              'Cache-Control',
+              'public, max-age=31536000, immutable',
+            );
+          } else {
+            response.setHeader('Cache-Control', 'no-cache');
+          }
+        },
+      }),
+    );
     app.use((request, response, next) => {
       if (
         request.method !== 'GET' ||
@@ -51,6 +68,7 @@ export function createApp() {
         return;
       }
 
+      response.setHeader('Cache-Control', 'no-cache');
       response.sendFile(frontendIndexFile, (error) => {
         if (error) {
           next(error);

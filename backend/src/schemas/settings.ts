@@ -6,6 +6,11 @@ export const updateSettingsSchema = z
       name: z.string().trim().min(2).max(60),
       subtitle: z.string().trim().min(2).max(100),
     }),
+    server: z
+      .object({
+        port: z.number().int().min(1).max(65_535),
+      })
+      .optional(),
     application: z.object({
       submissionsEnabled: z.boolean(),
       quizFailCooldownMinutes: z.number().int().min(0).max(10_080),

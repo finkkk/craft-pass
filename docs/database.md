@@ -4,7 +4,9 @@
 
 ### `applications`
 
-保存玩家身份、协议签署、答题结果与审核状态。`minecraft_id_normalized` 用于执行不区分大小写的重复申请检查，原始 `minecraft_id` 用于展示和执行白名单命令。
+保存玩家身份、协议签署、答题结果与审核状态。`minecraft_id_normalized` 用于执行不区分大小写的重复检查，原始 `minecraft_id` 用于展示和执行白名单命令。所有状态都会占用 QQ 和 Minecraft ID；只有管理员删除记录才会释放身份。
+
+`identity_locked` 用于兼容升级前可能已经存在的历史重复数据。新建或经管理员修改的记录会设为 `true`，并受到 QQ 与 Minecraft ID 两个部分唯一索引保护。旧记录保持 `false`，但应用服务查询时仍会参与冲突判断。
 
 ### `admins`
 

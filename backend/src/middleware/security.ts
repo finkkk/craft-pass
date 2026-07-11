@@ -31,6 +31,9 @@ export function createCorsOptions(
 export const apiRateLimiter = rateLimit({
   windowMs: env.rateLimit.windowMs,
   limit: env.rateLimit.max,
+  // Page navigation and dashboard refreshes are read-only and must never lock
+  // an administrator out. Sensitive public reads have their own limiter.
+  skip: shouldSkipGlobalRateLimit,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   handler(_request, response) {
@@ -44,6 +47,27 @@ export const apiRateLimiter = rateLimit({
   },
 });
 
+export const apiReadRateLimiter = rateLimit({
+  windowMs: env.rateLimit.windowMs,
+  limit: Math.max(env.rateLimit.max * 6, 600),
+  skip: (request) => !shouldSkipGlobalRateLimit(request),
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  handler(_request, response) {
+    response.status(429).json({
+      error: {
+        code: 'READ_RATE_LIMIT_EXCEEDED',
+        message: '读取请求异常频繁，请稍后再试',
+        requestId: response.locals.requestId,
+      },
+    });
+  },
+});
+
+export function shouldSkipGlobalRateLimit(request: Pick<Request, 'method'>) {
+  return ['GET', 'HEAD', 'OPTIONS'].includes(request.method.toUpperCase());
+}
+
 export const applicationSubmissionRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1_000,
   limit: env.nodeEnv === 'test' ? 1_000 : 10,
@@ -54,6 +78,22 @@ export const applicationSubmissionRateLimiter = rateLimit({
       error: {
         code: 'APPLICATION_RATE_LIMIT_EXCEEDED',
         message: '申请提交过于频繁，请稍后再试',
+        requestId: response.locals.requestId,
+      },
+    });
+  },
+});
+
+export const applicationStatusRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1_000,
+  limit: env.nodeEnv === 'test' ? 1_000 : 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  handler(_request, response) {
+    response.status(429).json({
+      error: {
+        code: 'APPLICATION_STATUS_RATE_LIMIT_EXCEEDED',
+        message: '查询尝试过于频繁，请稍后再试',
         requestId: response.locals.requestId,
       },
     });

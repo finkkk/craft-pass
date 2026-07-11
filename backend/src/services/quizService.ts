@@ -16,11 +16,20 @@ export interface QuizResult {
   answers: QuizAnswerResult[];
 }
 
-export function gradeQuiz(answers: Readonly<Record<string, string>>): QuizResult {
+export function gradeQuiz(
+  answers: Readonly<Record<string, string>>,
+  questionIds?: readonly string[],
+): QuizResult {
   const {
     quiz: { passingScore, questions: quizQuestions },
   } = getContentConfig();
-  const answerResults = quizQuestions.map((question) => {
+  const selectedQuestionIds = new Set(
+    questionIds ?? quizQuestions.map((question) => question.id),
+  );
+  const selectedQuestions = quizQuestions.filter((question) =>
+    selectedQuestionIds.has(question.id),
+  );
+  const answerResults = selectedQuestions.map((question) => {
     const selectedOptionId = answers[question.id] ?? '';
     const selectedOption = question.options.find(
       (option) => option.id === selectedOptionId,
@@ -35,13 +44,13 @@ export function gradeQuiz(answers: Readonly<Record<string, string>>): QuizResult
     };
   });
   const correctCount = answerResults.filter((answer) => answer.isCorrect).length;
-  const score = Math.round((correctCount / quizQuestions.length) * 100);
+  const score = Math.round((correctCount / selectedQuestions.length) * 100);
 
   return {
     score,
     passed: score >= passingScore,
     correctCount,
-    questionCount: quizQuestions.length,
+    questionCount: selectedQuestions.length,
     answers: answerResults,
   };
 }

@@ -9,7 +9,7 @@ const rawEnvSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
     .default('development'),
-  PORT: z.coerce.number().int().min(1).max(65_535).default(3000),
+  PORT: z.coerce.number().int().min(1).max(65_535).default(47_821),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   TRUST_PROXY: z.enum(['true', 'false']).default('false'),
   RATE_LIMIT_WINDOW_MS: z.coerce

@@ -303,6 +303,7 @@ export const contentConfigSchema = z
     quiz: z
       .object({
         passingScore: z.number().int().min(1).max(100),
+        randomQuestionCount: z.number().int().min(1).max(50).nullable().default(null),
         questions: z.array(questionSchema).min(1).max(50),
       })
       .strict(),
@@ -329,6 +330,18 @@ export const contentConfigSchema = z
         code: 'custom',
         path: ['quiz', 'questions'],
         message: '题目标识不能重复',
+      });
+    }
+
+
+    if (
+      content.quiz.randomQuestionCount !== null &&
+      content.quiz.randomQuestionCount > content.quiz.questions.length
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['quiz', 'randomQuestionCount'],
+        message: '随机抽题数量不能超过题库题目总数',
       });
     }
   });

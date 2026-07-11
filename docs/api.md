@@ -2,6 +2,8 @@
 
 当前公开接口统一使用 `/api` 前缀，JSON 错误响应包含稳定的 `code`、可读的 `message` 和用于排查日志的 `requestId`。
 
+普通 GET、HEAD 和 OPTIONS 使用独立的宽松读取限流；写操作使用 `RATE_LIMIT_MAX`。超过读取额度返回 `READ_RATE_LIMIT_EXCEEDED`，超过写操作额度返回 `RATE_LIMIT_EXCEEDED`。登录、部署、申请提交和身份查询还有各自的专用错误码与额度。
+
 ## 获取当前协议
 
 ```http
@@ -16,9 +18,9 @@ GET /api/agreement
 GET /api/quiz
 ```
 
-返回合格分数、题目数量、题目和选项。响应不会包含正确答案。
+返回合格分数、本次题目数量、题库总数、题目、选项和签名后的 `quizToken`。响应不会包含正确答案。
 
-题目会在每次请求时随机排序。提交答案时仍使用题目标识作为键，后端按当前题库独立判分，因此前端展示顺序不会影响得分。
+题目会在每次请求时随机排序；启用随机抽题后只返回本次抽中的题目。提交答案时必须原样带回 `quizToken`，后端会校验答案题目与本次抽题一致。
 
 ## 提交申请
 
@@ -35,6 +37,7 @@ Content-Type: application/json
   "minecraftId": "Steve_01",
   "agreementVersion": "2026-07-09-v1",
   "agreementAccepted": true,
+  "quizToken": "题目接口返回的签名凭证",
   "answers": {
     "q1": "C",
     "q2": "A"
@@ -42,7 +45,7 @@ Content-Type: application/json
 }
 ```
 
-实际提交必须回答当前全部题目。后端独立判分，并保存每道题的选择及是否正确。
+实际提交必须回答本次抽取的全部题目。后端独立判分，并保存每道题的选择及是否正确。
 
 成功响应使用 HTTP `201`：
 
@@ -62,13 +65,30 @@ Content-Type: application/json
 
 - `VALIDATION_ERROR`：字段格式错误、漏答或包含未知题目。
 - `AGREEMENT_VERSION_OUTDATED`：协议已经更新，需要重新阅读。
-- `ACTIVE_APPLICATION_EXISTS`：该 Minecraft ID 已经待审核、在白名单中或等待 RCON 重试。
+- `IDENTITY_CONFLICT`：QQ、Minecraft ID 或两者已被任意历史申请占用；`details` 会指出发生冲突的字段。
 - `APPLICATION_SUBMISSIONS_DISABLED`：后台暂时关闭了新申请入口。
-- `APPLICATION_COOLDOWN_ACTIVE`：同 QQ 号或 Minecraft ID 在答题失败冷却期内再次提交。
-- `APPLICATION_RATE_LIMIT_ACTIVE`：同 IP、QQ 号或 Minecraft ID 在后台配置的时间窗口内提交次数过多。
+- `APPLICATION_RATE_LIMIT_ACTIVE`：同 IP 在后台配置的时间窗口内提交次数过多。
 - `APPLICATION_RATE_LIMIT_EXCEEDED`：15 分钟内提交超过 10 次。
 
 答题结果低于后台配置的合格分数仍会创建记录，状态为 `quiz_failed`；响应只返回分数，不返回正确答案。
+
+## 查询申请进度
+
+```http
+POST /api/applications/status
+Content-Type: application/json
+```
+
+```json
+{
+  "qqNumber": "123456789",
+  "minecraftId": "Steve_01"
+}
+```
+
+查询成功会返回状态、分数、提交与审核时间；仅当状态为 `rejected` 时返回管理员填写的拒绝原因。QQ 与 Minecraft ID 必须同时匹配同一条申请，避免仅凭公开的游戏名查询他人的审核信息。
+
+玩家进入规则页面前可调用 `POST /api/applications/identity-check`，请求体同样包含 `qqNumber` 和 `minecraftId`。可用时返回 `{ "available": true }`；冲突时返回 `IDENTITY_CONFLICT`。最终提交接口仍会再次查重。
 
 ## 健康检查
 
@@ -104,12 +124,18 @@ POST /api/admin/rcon/command
 POST /api/admin/system/factory-reset
 GET  /api/admin/settings
 PUT  /api/admin/settings
+GET  /api/admin/version
+POST /api/admin/applications/batch-review
 POST /api/admin/applications/:id/approve
 POST /api/admin/applications/:id/reject
 POST /api/admin/applications/:id/retry-rcon
 ```
 
 除登录外，所有管理员接口都必须携带有效会话 Cookie。前端请求需要设置 `credentials: "include"`。
+
+系统配置响应的 `server` 字段包含目标 `port`、本进程正在使用的 `activePort` 和 `restartRequired`。`PUT /api/admin/settings` 可传入 `server.port`（1–65535）；端口保存后需要重启服务才会生效。为兼容旧客户端，更新请求可省略 `server`，此时保留原端口。
+
+批量审核一次最多处理 20 条记录，`action` 可为 `approve`、`reject` 或 `retry`。后端逐条执行并返回每条成功或失败结果；其中一条失败不会回滚已经完成的其他记录。单条和批量拒绝的 `reason` 都可以省略，填写后玩家可在进度查询中看到。
 
 统计接口返回累计申请、近 7 天申请、答题通过率、已审核申请通过率、RCON 成功率、状态分布和最近 14 天每日趋势。没有已完成 RCON 尝试时，`rconSuccessRate` 返回 `null`。
 
@@ -145,7 +171,7 @@ RCON 状态接口会在已启用时尝试认证连接，并返回 `connected`、
 
 系统配置接口用于修改站点名称、申请入口与提交频率策略、RCON 参数、自定义 RCON 命令开关和危险命令黑名单。读取配置时只返回 `passwordConfigured`，绝不返回 RCON 密码；更新时省略或留空密码表示保持原值。当前后台中站点名称与 Logo 位于“界面定制”，RCON 地址、密码和命令模板位于“系统配置”。
 
-提交频率策略中的“提交统计时段”只用于统计短时间内同 IP、QQ 号或 Minecraft ID 的提交次数，不是玩家答题限时。
+提交频率策略中的“提交统计时段”只用于统计短时间内同 IP 的提交次数，不是玩家答题限时。QQ 与 Minecraft ID 使用全状态唯一绑定，不再使用次数限制。
 
 恢复出厂设置接口需要传入确认文本：
 

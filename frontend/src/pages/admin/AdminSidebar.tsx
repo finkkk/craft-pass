@@ -1,6 +1,9 @@
-import { logoutAdmin } from '../../api/admin';
+import { getAdminVersionStatus, logoutAdmin } from '../../api/admin';
+import { useEffect, useState } from 'react';
+import type { VersionStatus } from '../../types/admin';
 import type { AdminIdentity } from '../../types/admin';
 import { BrandMark } from '../../components/BrandMark';
+import { handleInternalNavigation } from '../../navigation';
 
 type AdminSection =
   | 'review'
@@ -51,6 +54,28 @@ export function AdminSidebar({
   admin: AdminIdentity | null;
   active: AdminSection;
 }) {
+  const [versionStatus, setVersionStatus] = useState<VersionStatus | null>(null);
+
+  useEffect(() => {
+    function checkVersion() {
+      void getAdminVersionStatus()
+        .then((status) => {
+          if (
+            status.updateAvailable &&
+            sessionStorage.getItem('craft_pass_dismissed_release') !==
+              status.latestVersion
+          ) {
+            setVersionStatus(status);
+          }
+        })
+        .catch(() => undefined);
+    }
+
+    checkVersion();
+    const timer = window.setInterval(checkVersion, 30 * 60 * 1_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   async function handleLogout() {
     await logoutAdmin().catch(() => undefined);
     window.location.href = '/admin/login';
@@ -67,6 +92,7 @@ export function AdminSidebar({
           <a
             className={active === item.id ? 'active' : undefined}
             href={item.href}
+            onClick={(event) => handleInternalNavigation(event, item.href)}
             key={item.id}
           >
             <span>{item.icon}</span>
@@ -95,6 +121,29 @@ export function AdminSidebar({
       >
         作者 finkkk · craft-pass
       </a>
+      {versionStatus ? (
+        <div className="version-update-toast" role="status">
+          <button
+            type="button"
+            aria-label="关闭版本提醒"
+            onClick={() => {
+              sessionStorage.setItem(
+                'craft_pass_dismissed_release',
+                versionStatus.latestVersion ?? '',
+              );
+              setVersionStatus(null);
+            }}
+          >
+            ×
+          </button>
+          <small>发现新版本</small>
+          <strong>{versionStatus.latestVersion}</strong>
+          <p>当前版本 {versionStatus.currentVersion}</p>
+          <a href={versionStatus.releaseUrl} target="_blank" rel="noreferrer">
+            前往 GitHub 查看 →
+          </a>
+        </div>
+      ) : null}
     </aside>
   );
 }

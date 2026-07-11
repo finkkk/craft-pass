@@ -13,28 +13,33 @@ import type {
   RconStatus,
   ReviewActionResult,
   UpdateAdminSettings,
+  BatchReviewResult,
+  VersionStatus,
 } from '../types/admin';
+import { ApiClientError, requestJson } from './client';
 
-interface ApiErrorBody {
-  error?: {
-    code?: string;
-    message?: string;
-  };
-}
-
-export class AdminApiError extends Error {
+export class AdminApiError extends ApiClientError {
   constructor(
     message: string,
-    readonly status: number,
-    readonly code?: string,
+    status: number,
+    code?: string,
   ) {
-    super(message);
+    super(message, status, code);
     this.name = 'AdminApiError';
   }
 }
 
-export function loginAdmin(username: string, password: string) {
-  return adminRequest<{ admin: AdminIdentity; expiresAt: string }>(
+let adminSessionRequest: Promise<{ admin: AdminIdentity }> | null = null;
+let versionStatusCache:
+  | { value: VersionStatus; expiresAt: number }
+  | null = null;
+const adminReadCache = new Map<
+  string,
+  { expiresAt: number; request: Promise<unknown> }
+>();
+
+export async function loginAdmin(username: string, password: string) {
+  const result = await adminRequest<{ admin: AdminIdentity; expiresAt: string }>(
     '/api/admin/login',
     {
       method: 'POST',
@@ -42,10 +47,18 @@ export function loginAdmin(username: string, password: string) {
       body: JSON.stringify({ username, password }),
     },
   );
+  adminSessionRequest = Promise.resolve({ admin: result.admin });
+  return result;
 }
 
 export function getAdminSession() {
-  return adminRequest<{ admin: AdminIdentity }>('/api/admin/session');
+  adminSessionRequest ??= adminRequest<{ admin: AdminIdentity }>(
+    '/api/admin/session',
+  ).catch((error) => {
+    adminSessionRequest = null;
+    throw error;
+  });
+  return adminSessionRequest;
 }
 
 export function getAdminSummary() {
@@ -153,6 +166,15 @@ export function updateAdminSettings(settings: UpdateAdminSettings) {
   });
 }
 
+export async function getAdminVersionStatus() {
+  if (versionStatusCache && versionStatusCache.expiresAt > Date.now()) {
+    return versionStatusCache.value;
+  }
+  const value = await adminRequest<VersionStatus>('/api/admin/version');
+  versionStatusCache = { value, expiresAt: Date.now() + 5 * 60 * 1_000 };
+  return value;
+}
+
 export async function getAdminApplications(status: ApplicationStatus) {
   const response = await adminRequest<{
     applications: AdminApplicationRow[];
@@ -167,10 +189,15 @@ export async function getAdminApplication(applicationId: string) {
   return response.application;
 }
 
-export function logoutAdmin() {
-  return adminRequest<void>('/api/admin/logout', {
-    method: 'POST',
-  });
+export async function logoutAdmin() {
+  try {
+    return await adminRequest<void>('/api/admin/logout', {
+      method: 'POST',
+    });
+  } finally {
+    adminSessionRequest = null;
+    versionStatusCache = null;
+  }
 }
 
 export function approveAdminApplication(applicationId: string) {
@@ -201,6 +228,18 @@ export function retryAdminApplicationRcon(applicationId: string) {
   );
 }
 
+export function batchReviewAdminApplications(input: {
+  action: 'approve' | 'reject' | 'retry';
+  applicationIds: string[];
+  reason?: string;
+}) {
+  return adminRequest<BatchReviewResult>('/api/admin/applications/batch-review', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
 export async function updateAdminApplication(
   applicationId: string,
   input: { qqNumber: string; minecraftId: string },
@@ -223,41 +262,39 @@ export function deleteAdminApplication(applicationId: string) {
 }
 
 async function adminRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
+  const method = (init?.method ?? 'GET').toUpperCase();
+  if (method === 'GET') {
+    const cached = adminReadCache.get(path);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.request as Promise<T>;
+    }
+  }
 
+  const request = performAdminRequest<T>(path, init);
+  if (method === 'GET') {
+    adminReadCache.set(path, {
+      expiresAt: Date.now() + 3_000,
+      request,
+    });
+    request.catch(() => adminReadCache.delete(path));
+  } else {
+    adminReadCache.clear();
+    request.then(() => adminReadCache.clear()).catch(() => undefined);
+  }
+
+  return request;
+}
+
+async function performAdminRequest<T>(path: string, init?: RequestInit) {
   try {
-    response = await fetch(path, {
+    return await requestJson<T>(path, {
       ...init,
       credentials: 'include',
     });
-  } catch {
-    throw new AdminApiError('无法连接后端服务', 0);
+  } catch (error) {
+    if (error instanceof ApiClientError) {
+      throw new AdminApiError(error.message, error.status, error.code);
+    }
+    throw error;
   }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  const body = (await response.json().catch(() => null)) as
-    | T
-    | ApiErrorBody
-    | null;
-
-  if (!response.ok) {
-    const errorBody =
-      body && typeof body === 'object' && 'error' in body
-        ? body.error
-        : undefined;
-    throw new AdminApiError(
-      errorBody?.message ?? `请求失败（HTTP ${response.status}）`,
-      response.status,
-      errorBody?.code,
-    );
-  }
-
-  if (!body) {
-    throw new AdminApiError('服务器返回了空响应', response.status);
-  }
-
-  return body as T;
 }

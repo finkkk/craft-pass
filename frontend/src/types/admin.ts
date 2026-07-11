@@ -11,6 +11,17 @@ export interface AdminIdentity {
   role: string;
 }
 
+export interface VersionStatus {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseName: string | null;
+  releaseUrl: string;
+  publishedAt: string | null;
+  checkedAt: string;
+  errorMessage: string | null;
+}
+
 export interface AdminSummary {
   pendingReview: number;
   whitelisted: number;
@@ -60,6 +71,7 @@ export interface AdminContentConfig {
   };
   quiz: {
     passingScore: number;
+    randomQuestionCount: number | null;
     questions: Array<{
       id: string;
       prompt: string;
@@ -97,6 +109,18 @@ export interface ReviewActionResult {
   status: ApplicationStatus;
 }
 
+export interface BatchReviewResult {
+  action: 'approve' | 'reject' | 'retry';
+  succeeded: number;
+  failed: number;
+  results: Array<{
+    applicationId: string;
+    success: boolean;
+    status?: ApplicationStatus;
+    error?: string;
+  }>;
+}
+
 export interface FactoryResetResult {
   setupRequired: true;
   setupToken: string;
@@ -104,6 +128,11 @@ export interface FactoryResetResult {
 
 export interface AdminSettings {
   source: 'runtime' | 'environment';
+  server: {
+    port: number;
+    activePort: number;
+    restartRequired: boolean;
+  };
   site: {
     name: string;
     subtitle: string;
@@ -131,6 +160,7 @@ export interface AdminSettings {
 
 export interface UpdateAdminSettings {
   site: AdminSettings['site'];
+  server?: Pick<AdminSettings['server'], 'port'>;
   application: AdminSettings['application'];
   rcon: Omit<AdminSettings['rcon'], 'passwordConfigured'> & {
     password?: string;

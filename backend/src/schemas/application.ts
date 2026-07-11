@@ -5,9 +5,6 @@ const answersSchema = z
   .record(z.string(), z.string())
   .superRefine((answers, context) => {
     const questions = getContentConfig().quiz.questions;
-    const expectedQuestionIds = new Set(
-      questions.map((question) => question.id),
-    );
     const optionIdsByQuestion = new Map(
       questions.map((question) => [
         question.id,
@@ -15,14 +12,11 @@ const answersSchema = z
       ]),
     );
 
-    for (const questionId of expectedQuestionIds) {
-      if (!(questionId in answers)) {
-        context.addIssue({
-          code: 'custom',
-          path: [questionId],
-          message: '该题尚未作答',
-        });
-      }
+    if (Object.keys(answers).length === 0) {
+      context.addIssue({
+        code: 'custom',
+        message: '至少需要回答一道题',
+      });
     }
 
     for (const [questionId, optionId] of Object.entries(answers)) {
@@ -65,9 +59,23 @@ export const createApplicationSchema = z
       .boolean()
       .refine((accepted) => accepted, '必须阅读并同意服务器协议'),
     answers: answersSchema,
+    quizToken: z.string().min(1).max(4_096).optional(),
   })
   .strict();
 
 export type CreateApplicationBody = z.infer<
   typeof createApplicationSchema
 >;
+
+export const applicationIdentitySchema = z
+  .object({
+    qqNumber: z
+      .string()
+      .trim()
+      .regex(/^[1-9][0-9]{4,11}$/, 'QQ 号格式不正确'),
+    minecraftId: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9_]{3,16}$/),
+  })
+  .strict();

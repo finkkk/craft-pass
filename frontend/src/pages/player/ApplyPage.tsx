@@ -13,7 +13,7 @@ interface ApplyPageProps {
   questionCount?: number;
   passingScore?: number;
   copy: UiContent['apply'];
-  onContinue: (identity: Identity) => void;
+  onContinue: (identity: Identity) => Promise<void>;
 }
 
 export function ApplyPage({
@@ -27,8 +27,9 @@ export function ApplyPage({
 }: ApplyPageProps) {
   const [formValue, setFormValue] = useState(initialValue);
   const [errors, setErrors] = useState<Partial<Identity>>({});
+  const [checkingIdentity, setCheckingIdentity] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const nextErrors: Partial<Identity> = {};
@@ -44,11 +45,16 @@ export function ApplyPage({
     setErrors(nextErrors);
 
     if (Object.keys(nextErrors).length === 0) {
-      onContinue(formValue);
+      setCheckingIdentity(true);
+      try {
+        await onContinue(formValue);
+      } finally {
+        setCheckingIdentity(false);
+      }
     }
   }
 
-  const submitDisabled = configLoading || !submissionsEnabled;
+  const submitDisabled = configLoading || !submissionsEnabled || checkingIdentity;
 
   return (
     <section className="split-layout">
@@ -152,7 +158,9 @@ export function ApplyPage({
             type="submit"
             disabled={submitDisabled}
           >
-            {configLoading
+            {checkingIdentity
+              ? '正在检查身份是否重复…'
+              : configLoading
               ? copy.loadingButton
               : submissionsEnabled
                 ? copy.continueButton

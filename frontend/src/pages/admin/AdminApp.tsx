@@ -1,7 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { lazy, useEffect, useState, type FormEvent } from 'react';
 import {
   AdminApiError,
   approveAdminApplication,
+  batchReviewAdminApplications,
   deleteAdminApplication,
   getAdminApplication,
   getAdminApplications,
@@ -21,14 +22,26 @@ import type {
   ApplicationStatus,
   RconStatus,
 } from '../../types/admin';
-import { AdminSettingsPage } from './AdminSettingsPage';
-import { AdminStatisticsPage } from './AdminStatisticsPage';
-import { AdminContentPage } from './AdminContentPage';
-import { AdminAppearancePage } from './AdminAppearancePage';
-import { AdminRconPage } from './AdminRconPage';
 import { AdminSidebar } from './AdminSidebar';
 import { BrandMark } from '../../components/BrandMark';
 import type { PublicSiteConfig } from '../../types/setup';
+import { navigate } from '../../navigation';
+
+const AdminSettingsPage = lazy(() =>
+  import('./AdminSettingsPage').then((module) => ({ default: module.AdminSettingsPage })),
+);
+const AdminStatisticsPage = lazy(() =>
+  import('./AdminStatisticsPage').then((module) => ({ default: module.AdminStatisticsPage })),
+);
+const AdminContentPage = lazy(() =>
+  import('./AdminContentPage').then((module) => ({ default: module.AdminContentPage })),
+);
+const AdminAppearancePage = lazy(() =>
+  import('./AdminAppearancePage').then((module) => ({ default: module.AdminAppearancePage })),
+);
+const AdminRconPage = lazy(() =>
+  import('./AdminRconPage').then((module) => ({ default: module.AdminRconPage })),
+);
 
 const statusTabs: Array<{ id: ApplicationStatus; label: string }> = [
   { id: 'pending_review', label: '待审核' },
@@ -38,28 +51,34 @@ const statusTabs: Array<{ id: ApplicationStatus; label: string }> = [
   { id: 'rcon_failed', label: 'RCON 失败' },
 ];
 
-export function AdminApp({ site }: { site: PublicSiteConfig }) {
-  if (window.location.pathname === '/admin/login') {
+export function AdminApp({
+  site,
+  pathname,
+}: {
+  site: PublicSiteConfig;
+  pathname: string;
+}) {
+  if (pathname === '/admin/login') {
     return <AdminLoginPage site={site} />;
   }
 
-  if (window.location.pathname === '/admin/settings') {
+  if (pathname === '/admin/settings') {
     return <AdminSettingsPage />;
   }
 
-  if (window.location.pathname === '/admin/statistics') {
+  if (pathname === '/admin/statistics') {
     return <AdminStatisticsPage />;
   }
 
-  if (window.location.pathname === '/admin/content') {
+  if (pathname === '/admin/content') {
     return <AdminContentPage />;
   }
 
-  if (window.location.pathname === '/admin/appearance') {
+  if (pathname === '/admin/appearance') {
     return <AdminAppearancePage />;
   }
 
-  if (window.location.pathname === '/admin/rcon') {
+  if (pathname === '/admin/rcon') {
     return <AdminRconPage />;
   }
 
@@ -79,7 +98,7 @@ function AdminLoginPage({ site }: { site: PublicSiteConfig }) {
 
     try {
       await loginAdmin(username.trim(), password);
-      window.location.href = '/admin';
+      navigate('/admin');
     } catch (loginError) {
       setError(getMessage(loginError));
     } finally {
@@ -165,6 +184,10 @@ function AdminDashboardPage() {
     useState<AdminApplicationDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchRejecting, setBatchRejecting] = useState(false);
+  const [batchReason, setBatchReason] = useState('');
+  const [batchMessage, setBatchMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -173,6 +196,8 @@ function AdminDashboardPage() {
 
   useEffect(() => {
     if (admin) {
+      setSelectedIds(new Set());
+      setBatchRejecting(false);
       void loadApplications(status);
     }
   }, [admin, status]);
@@ -342,6 +367,67 @@ function AdminDashboardPage() {
     }
   }
 
+  function toggleSelection(applicationId: string) {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(applicationId)) {
+        next.delete(applicationId);
+      } else if (next.size < 20) {
+        next.add(applicationId);
+      } else {
+        setError('每次最多批量处理 20 条申请');
+      }
+      return next;
+    });
+  }
+
+  async function handleBatchAction(
+    action: 'approve' | 'reject' | 'retry',
+    reason = '',
+  ) {
+    const applicationIds = [...selectedIds];
+    if (
+      applicationIds.length === 0 ||
+      ((action === 'approve' || action === 'retry') &&
+        !window.confirm(`确认批量执行 ${applicationIds.length} 条 RCON 白名单操作吗？`))
+    ) {
+      return;
+    }
+
+    setActionLoading(true);
+    setError(null);
+    setBatchMessage(null);
+    try {
+      const result = await batchReviewAdminApplications({
+        action,
+        applicationIds,
+        reason: reason.trim(),
+      });
+      const [nextSummary, nextApplications] = await Promise.all([
+        getAdminSummary(),
+        getAdminApplications(status),
+      ]);
+      setSummary(nextSummary);
+      setApplications(nextApplications);
+      setSelectedIds(new Set());
+      setBatchRejecting(false);
+      setBatchReason('');
+      setBatchMessage(
+        `批量操作完成：成功 ${result.succeeded} 条，失败 ${result.failed} 条。`,
+      );
+      if (result.failed > 0) {
+        setError(
+          result.results.find((item) => !item.success)?.error ?? '部分操作失败',
+        );
+      }
+      void refreshRconStatus();
+    } catch (batchError) {
+      setError(getMessage(batchError));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
   return (
     <div className="admin-shell">
       <AdminSidebar admin={admin} active="review" />
@@ -362,6 +448,7 @@ function AdminDashboardPage() {
         </header>
 
         {error ? <div className="admin-form-error">{error}</div> : null}
+        {batchMessage ? <div className="settings-success">{batchMessage}</div> : null}
 
         <section className="summary-grid">
           <SummaryCard
@@ -401,10 +488,54 @@ function AdminDashboardPage() {
             ))}
           </div>
 
+          {(status === 'pending_review' || status === 'rcon_failed') &&
+          selectedIds.size > 0 ? (
+            <div className="batch-review-bar">
+              <strong>已选择 {selectedIds.size} 条</strong>
+              {batchRejecting ? (
+                <>
+                  <input
+                    value={batchReason}
+                    maxLength={500}
+                    placeholder="拒绝原因（可选，玩家可查询到）"
+                    onChange={(event) => setBatchReason(event.target.value)}
+                  />
+                  <button className="danger-button" disabled={actionLoading} onClick={() => void handleBatchAction('reject', batchReason)}>
+                    确认批量拒绝
+                  </button>
+                  <button className="secondary-button" onClick={() => setBatchRejecting(false)}>取消</button>
+                </>
+              ) : status === 'pending_review' ? (
+                <>
+                  <button className="secondary-button" disabled={actionLoading} onClick={() => setBatchRejecting(true)}>批量拒绝</button>
+                  <button className="primary-button" disabled={!rconStatus?.connected || actionLoading} onClick={() => void handleBatchAction('approve')}>批量批准</button>
+                </>
+              ) : (
+                <button className="primary-button" disabled={!rconStatus?.connected || actionLoading} onClick={() => void handleBatchAction('retry')}>批量重试 RCON</button>
+              )}
+            </div>
+          ) : null}
+
           <div className="admin-table-wrap">
             <table>
               <thead>
                 <tr>
+                  {(status === 'pending_review' || status === 'rcon_failed') ? (
+                    <th className="selection-cell">
+                      <input
+                        type="checkbox"
+                        aria-label="选择全部"
+                        checked={applications.length > 0 && applications.every((item) => selectedIds.has(item.id))}
+                        onChange={(event) =>
+                          setSelectedIds(
+                            event.target.checked
+                              ? new Set(applications.slice(0, 20).map((item) => item.id))
+                              : new Set(),
+                          )
+                        }
+                      />
+                    </th>
+                  ) : null}
                   <th>玩家</th>
                   <th>QQ 号</th>
                   <th>分数</th>
@@ -416,7 +547,17 @@ function AdminDashboardPage() {
               <tbody>
                 {applications.map((application) => (
                   <tr key={application.id}>
-                    <td>
+                    {(status === 'pending_review' || status === 'rcon_failed') ? (
+                      <td className="selection-cell">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择 ${application.minecraftId}`}
+                          checked={selectedIds.has(application.id)}
+                          onChange={() => toggleSelection(application.id)}
+                        />
+                      </td>
+                    ) : null}
+                    <td className="player-cell">
                       <strong>{application.minecraftId}</strong>
                       <small>{application.ipAddress ?? '未知 IP'}</small>
                     </td>
@@ -681,13 +822,13 @@ function ApplicationDrawer({
 
             {rejecting ? (
               <div className="reject-form">
-                <label htmlFor="reject-reason">拒绝原因</label>
+                <label htmlFor="reject-reason">拒绝原因（可选，玩家可查询到）</label>
                 <textarea
                   id="reject-reason"
                   maxLength={500}
                   value={rejectReason}
                   onChange={(event) => setRejectReason(event.target.value)}
-                  placeholder="该原因会保存在审核记录中"
+                  placeholder="可留空；填写后玩家查询进度时会看到"
                 />
                 <div>
                   <button
@@ -700,7 +841,7 @@ function ApplicationDrawer({
                   <button
                     className="danger-button"
                     type="button"
-                    disabled={!rejectReason.trim() || actionLoading}
+                    disabled={actionLoading}
                     onClick={() =>
                       void onAction('reject', rejectReason.trim())
                     }

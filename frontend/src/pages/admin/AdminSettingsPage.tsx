@@ -22,6 +22,7 @@ export function AdminSettingsPage() {
   const [settings, setSettings] = useState<AdminSettings | null>(null);
   const [content, setContent] = useState<AdminContentConfig | null>(null);
   const [rconStatus, setRconStatus] = useState<RconStatus | null>(null);
+  const [rconStatusChecking, setRconStatusChecking] = useState(true);
   const [rconPassword, setRconPassword] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -35,13 +36,11 @@ export function AdminSettingsPage() {
       getAdminSession(),
       getAdminSettings(),
       getAdminContent(),
-      getRconStatus().catch(() => null),
     ])
-      .then(([session, loadedSettings, loadedContent, loadedRconStatus]) => {
+      .then(([session, loadedSettings, loadedContent]) => {
         setAdmin(session.admin);
         setSettings(loadedSettings);
         setContent(loadedContent);
-        setRconStatus(loadedRconStatus);
       })
       .catch((loadError: unknown) => {
         if (loadError instanceof AdminApiError && loadError.status === 401) {
@@ -51,7 +50,20 @@ export function AdminSettingsPage() {
         setError(getMessage(loadError));
       })
       .finally(() => setLoading(false));
+
+    void refreshRconStatus();
   }, []);
+
+  async function refreshRconStatus() {
+    setRconStatusChecking(true);
+    try {
+      setRconStatus(await getRconStatus());
+    } catch {
+      setRconStatus(null);
+    } finally {
+      setRconStatusChecking(false);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -85,7 +97,7 @@ export function AdminSettingsPage() {
       });
       setSettings(updated);
       setRconPassword('');
-      setRconStatus(await getRconStatus().catch(() => null));
+      void refreshRconStatus();
       setMessage(
         updated.server.restartRequired
           ? `系统配置已保存。HTTP 端口将在重启服务后改为 ${updated.server.port}。`
@@ -203,12 +215,24 @@ export function AdminSettingsPage() {
                 value={
                   !settings.rcon.enabled
                     ? '未启用'
-                    : rconStatus?.connected
-                      ? '成功'
-                      : '失败'
+                    : rconStatusChecking
+                      ? '检测中'
+                      : rconStatus?.connected
+                        ? '成功'
+                        : '失败'
                 }
-                tone={rconStatus?.connected ? 'green' : 'red'}
-                detail={rconStatus?.errorMessage ?? '用于白名单与命令控制台'}
+                tone={
+                  rconStatusChecking
+                    ? ''
+                    : rconStatus?.connected
+                      ? 'green'
+                      : 'red'
+                }
+                detail={
+                  rconStatusChecking
+                    ? '正在后台检测，不影响配置读写'
+                    : (rconStatus?.errorMessage ?? '无法读取 RCON 连接状态')
+                }
               />
               <StatusCard
                 label="命令安全"

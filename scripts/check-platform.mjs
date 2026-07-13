@@ -135,12 +135,31 @@ for (const relativeFile of await walk('.')) {
   }
 }
 
-for (const packageFile of ['package.json', 'frontend/package.json', 'backend/package.json']) {
-  const packageJson = JSON.parse(await readFile(path.join(projectDirectory, packageFile), 'utf8'));
+const packageFiles = [
+  'package.json',
+  'frontend/package.json',
+  'backend/package.json',
+];
+const packageVersions = new Map();
+
+for (const packageFile of packageFiles) {
+  const packageJson = JSON.parse(
+    await readFile(path.join(projectDirectory, packageFile), 'utf8'),
+  );
+  packageVersions.set(packageFile, packageJson.version);
   for (const [name, command] of Object.entries(packageJson.scripts ?? {})) {
     if (/^(?:copy|xcopy|del|rmdir\s+\/s|set\s+\w+=)/i.test(command.trim())) {
       errors.push(`${packageFile} script ${name} uses a Windows-only command: ${command}`);
     }
+  }
+}
+
+const projectVersion = packageVersions.get('package.json');
+for (const packageFile of packageFiles.slice(1)) {
+  if (packageVersions.get(packageFile) !== projectVersion) {
+    errors.push(
+      `${packageFile} version must match the root package.json version (${projectVersion})`,
+    );
   }
 }
 

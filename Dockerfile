@@ -25,6 +25,7 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked \
   npm --prefix frontend ci --no-audit --no-fund \
   && npm --prefix backend ci --no-audit --no-fund
 
+COPY package.json ./package.json
 COPY frontend ./frontend
 COPY backend ./backend
 RUN npm --prefix frontend run build && npm --prefix backend run build
@@ -40,6 +41,7 @@ ENV NODE_ENV=production \
 
 WORKDIR /app
 
+COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/backend/package.json /app/backend/package-lock.json ./backend/
 COPY --from=build --chown=node:node /app/backend/node_modules ./backend/node_modules
 COPY --from=build --chown=node:node /app/backend/dist ./backend/dist

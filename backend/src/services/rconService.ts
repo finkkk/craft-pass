@@ -1,5 +1,6 @@
 import RconModule from 'rcon-srcds';
 import { getEffectiveRconConfig } from '../config/runtimeConfig.js';
+import { withTimeout } from '../utils/promiseTimeout.js';
 
 const Rcon = RconModule.default;
 
@@ -164,17 +165,25 @@ async function withAuthenticatedRconClient<T>(
   });
 
   try {
-    const authenticated = await client.authenticate(rconConfig.password);
+    return await withTimeout(
+      (async () => {
+        const authenticated = await client.authenticate(rconConfig.password);
 
-    if (!authenticated) {
-      throw new Error('RCON 身份验证失败');
-    }
+        if (!authenticated) {
+          throw new Error('RCON 身份验证失败');
+        }
 
-    return await operation(client);
+        return operation(client);
+      })(),
+      rconConfig.timeoutMs,
+      `RCON 连接或响应超时（${rconConfig.timeoutMs}ms）`,
+      () => client.connection?.destroy(),
+    );
   } finally {
-    if (client.isConnected()) {
-      await client.disconnect().catch(() => undefined);
-    }
+    // rcon-srcds sets a socket timeout but does not handle the timeout event,
+    // so its Promise can otherwise remain pending forever. This client is not
+    // reused; destroying the socket is also safe after successful operations.
+    client.connection?.destroy();
   }
 }
 

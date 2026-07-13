@@ -11,7 +11,7 @@ if (!npmCliPath) {
 const stages = [
   {
     label: '安装前后端依赖',
-    args: ['run', 'install:all'],
+    args: ['run', 'ci:all'],
   },
   {
     label: '构建前后端并应用数据库迁移',

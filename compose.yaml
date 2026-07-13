@@ -24,7 +24,7 @@ services:
       PORT_LOCKED: "true"
       DATABASE_URL: file:./data/craft-pass.db
       RUNTIME_DATA_DIR: /app/backend/data
-      TRUST_PROXY: "true"
+      TRUST_PROXY: "${TRUST_PROXY:-1}"
       CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:47821,http://127.0.0.1:47821,http://localhost,http://127.0.0.1}"
       RATE_LIMIT_WINDOW_MS: "${RATE_LIMIT_WINDOW_MS:-60000}"
       RATE_LIMIT_MAX: "${RATE_LIMIT_MAX:-100}"

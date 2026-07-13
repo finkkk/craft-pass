@@ -30,6 +30,8 @@ docker compose logs -f app
 - RCON 默认关闭，可在网页初始化向导或后台中配置；
 - 默认地址为 `http://localhost:47821/setup`。
 
+Compose 默认设置 `TRUST_PROXY=1`，表示应用只信任最近的一层 Nginx 或 Caddy。不要设置成 Express 的全信任布尔值 `true`；旧版 `.env` 中的 `true` 会由应用自动兼容为一跳。
+
 只有接入公网域名、改变宿主机端口或希望预填 RCON 时，才复制 `.env.example`：
 
 ```bash

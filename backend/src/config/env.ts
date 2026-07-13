@@ -18,7 +18,7 @@ const rawEnvSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65_535).default(47_821),
   PORT_LOCKED: z.enum(['true', 'false']).default('false'),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
-  TRUST_PROXY: z.enum(['true', 'false']).default('false'),
+  TRUST_PROXY: z.string().trim().min(1).default('false'),
   RATE_LIMIT_WINDOW_MS: z.coerce
     .number()
     .int()
@@ -88,7 +88,7 @@ export const env = Object.freeze({
   port: rawEnv.PORT,
   portLocked: rawEnv.PORT_LOCKED === 'true',
   corsOrigins,
-  trustProxy: rawEnv.TRUST_PROXY === 'true',
+  trustProxy: parseTrustProxySetting(rawEnv.TRUST_PROXY),
   databaseUrl: rawEnv.DATABASE_URL,
   adminSessionTtlHours: rawEnv.ADMIN_SESSION_TTL_HOURS,
   rcon: {
@@ -109,3 +109,24 @@ export const env = Object.freeze({
     max: rawEnv.RATE_LIMIT_MAX,
   },
 });
+
+export function parseTrustProxySetting(value: string) {
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === 'false') {
+    return false;
+  }
+
+  // Keep older deployments working without retaining Express's unsafe
+  // permissive behavior. The bundled Nginx/Caddy topology has one proxy hop.
+  if (normalized === 'true') {
+    return 1;
+  }
+
+  if (/^\d+$/.test(normalized)) {
+    return Number(normalized);
+  }
+
+  // Express also accepts named ranges, IP addresses and CIDR lists.
+  return value.trim();
+}

@@ -13,6 +13,7 @@ import {
 } from '../src/services/reviewService.js';
 import type { RconExecutor } from '../src/services/rconService.js';
 import { shouldSkipGlobalRateLimit } from '../src/middleware/security.js';
+import { parseTrustProxySetting } from '../src/config/env.js';
 
 let server: Server;
 let baseUrl: string;
@@ -81,6 +82,14 @@ test('普通读取请求不会消耗全局写操作限流额度', () => {
   assert.equal(shouldSkipGlobalRateLimit({ method: 'OPTIONS' }), true);
   assert.equal(shouldSkipGlobalRateLimit({ method: 'POST' }), false);
   assert.equal(shouldSkipGlobalRateLimit({ method: 'PATCH' }), false);
+});
+
+test('反向代理配置不会使用可绕过 IP 限流的全信任模式', () => {
+  assert.equal(parseTrustProxySetting('false'), false);
+  assert.equal(parseTrustProxySetting('true'), 1);
+  assert.equal(parseTrustProxySetting('1'), 1);
+  assert.equal(parseTrustProxySetting('2'), 2);
+  assert.equal(parseTrustProxySetting('loopback'), 'loopback');
 });
 
 test('首次部署必须使用控制台令牌，完成后入口自动锁定', async () => {

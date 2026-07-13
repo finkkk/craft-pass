@@ -127,7 +127,7 @@ adminRouter.post(
     response.cookie(
       adminSessionCookieName,
       session.token,
-      getAdminSessionCookieOptions(),
+      getAdminSessionCookieOptions(request.secure),
     );
 
     await prisma.adminLog.create({
@@ -157,7 +157,7 @@ adminRouter.get('/session', (_request, response) => {
   });
 });
 
-adminRouter.post('/logout', async (_request, response) => {
+adminRouter.post('/logout', async (request, response) => {
   const token = response.locals.adminSessionToken;
   const admin = response.locals.admin;
 
@@ -176,7 +176,7 @@ adminRouter.post('/logout', async (_request, response) => {
 
   response.clearCookie(
     adminSessionCookieName,
-    getAdminSessionClearCookieOptions(),
+    getAdminSessionClearCookieOptions(request.secure),
   );
   response.status(204).end();
 });
@@ -413,7 +413,7 @@ adminRouter.post('/system/factory-reset', async (request, response) => {
 
   response.clearCookie(
     adminSessionCookieName,
-    getAdminSessionClearCookieOptions(),
+    getAdminSessionClearCookieOptions(request.secure),
   );
   response.json({
     setupRequired: true,

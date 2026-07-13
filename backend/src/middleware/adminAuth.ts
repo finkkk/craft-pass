@@ -23,10 +23,10 @@ export const requireAdmin: RequestHandler = async (
   const session = await authenticateAdminSession(token);
 
   if (!session) {
-    response.clearCookie(
-      adminSessionCookieName,
-      getAdminSessionClearCookieOptions(),
-    );
+      response.clearCookie(
+        adminSessionCookieName,
+        getAdminSessionClearCookieOptions(request.secure),
+      );
     next(new HttpError(401, 'ADMIN_SESSION_INVALID', '登录状态已失效'));
     return;
   }

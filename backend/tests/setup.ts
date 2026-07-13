@@ -25,6 +25,7 @@ mkdirSync(dataDirectory, { recursive: true });
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_URL = `file:${testDatabasePath}`;
 process.env.RATE_LIMIT_MAX = '1000';
+process.env.TRUST_PROXY = '1';
 process.env.RCON_ENABLED = 'false';
 process.env.RUNTIME_DATA_DIR = testRuntimeDirectory;
 process.env.SETUP_TOKEN = 'test-setup-token-1234567890';

@@ -14,6 +14,7 @@ import {
 import type { RconExecutor } from '../src/services/rconService.js';
 import { shouldSkipGlobalRateLimit } from '../src/middleware/security.js';
 import { parseTrustProxySetting } from '../src/config/env.js';
+import { getAdminSessionCookieOptions } from '../src/config/adminSession.js';
 
 let server: Server;
 let baseUrl: string;
@@ -73,6 +74,7 @@ test('健康检查返回服务状态与安全响应头', async () => {
   );
   assert.equal(response.headers.get('cross-origin-opener-policy'), null);
   assert.equal(response.headers.get('origin-agent-cluster'), null);
+  assert.equal(response.headers.get('strict-transport-security'), null);
   assert.match(response.headers.get('x-request-id') ?? '', /^[\da-f-]{36}$/);
 });
 
@@ -387,7 +389,7 @@ test('未登录不能访问管理员接口', async () => {
   assert.equal(body.error.code, 'ADMIN_AUTH_REQUIRED');
 });
 
-test('管理员使用 bcrypt 密码登录并获得安全 Cookie', async () => {
+test('管理员登录 Cookie 会根据实际访问协议设置安全属性', async () => {
   const invalidResponse = await fetch(`${baseUrl}/api/admin/login`, {
     method: 'POST',
     headers: {
@@ -418,6 +420,23 @@ test('管理员使用 bcrypt 密码登录并获得安全 Cookie', async () => {
   adminId = body.admin.id;
   assert.match(setCookie, /HttpOnly/i);
   assert.match(setCookie, /SameSite=Strict/i);
+  assert.doesNotMatch(setCookie, /;\s*Secure/i);
+  assert.equal(getAdminSessionCookieOptions(true).secure, true);
+  assert.equal(getAdminSessionCookieOptions(false).secure, false);
+
+  const httpsResponse = await fetch(`${baseUrl}/api/admin/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Forwarded-Proto': 'https',
+    },
+    body: JSON.stringify({
+      username: 'test_admin',
+      password: 'admin123',
+    }),
+  });
+  assert.equal(httpsResponse.status, 200);
+  assert.match(httpsResponse.headers.get('set-cookie') ?? '', /;\s*Secure/i);
 
   adminCookie = setCookie.split(';')[0] ?? '';
   assert.ok(adminCookie.startsWith('craft_pass_admin_session='));

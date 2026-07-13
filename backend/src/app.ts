@@ -49,6 +49,7 @@ export function createApp() {
       // and emit noisy console errors. Keep them for HTTPS requests.
       response.removeHeader('Cross-Origin-Opener-Policy');
       response.removeHeader('Origin-Agent-Cluster');
+      response.removeHeader('Strict-Transport-Security');
     }
     next();
   });

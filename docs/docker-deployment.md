@@ -134,6 +134,8 @@ docker compose up -d --force-recreate app
 
 配置 Certbot/HTTPS 后，把 `CORS_ORIGINS` 改为 `https://apply.example.com`，并再次重新创建容器。不要在同一阶段混用 HTTP 页面与 HTTPS 静态资源。
 
+管理员会话 Cookie 会根据 Nginx 转发的实际协议自动设置：临时 HTTP 验证时不带 `Secure`，启用 HTTPS 后自动带上 `Secure`。因此必须保留 `proxy_set_header X-Forwarded-Proto $scheme;`，否则后端无法正确判断访问协议。HTTP 仅用于证书配置前的短期验证，正式使用管理后台前应尽快启用 HTTPS。
+
 ## 方案 B：启用内置 Caddy
 
 本机 HTTP 使用内置 Caddy 时不需要 `.env`：

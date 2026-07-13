@@ -39,6 +39,8 @@ proxy_set_header X-Forwarded-Proto $scheme;
 
 同时让 `CORS_ORIGINS` 与浏览器地址完全一致。临时 HTTP 部署使用 `http://域名`，证书生效后再改为 `https://域名`。修改 Compose 环境变量后需要执行 `docker compose up -d --force-recreate app`，只执行 `restart` 不会加载新的环境变量。
 
+如果管理员登录成功后立刻返回登录页，检查登录响应的 `Set-Cookie` 和随后 `/api/admin/summary` 的状态。HTTP 页面不能使用带 `Secure` 的 Cookie；当前版本会依据 `X-Forwarded-Proto` 自动选择 Cookie 属性。旧镜像需要重新构建，不能只重启容器。
+
 ## HTTP 429 排查
 
 1. 查看响应 JSON 中的 `error.code`，区分全局写限流、登录限流、提交限流和查询限流。

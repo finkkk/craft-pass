@@ -3,17 +3,20 @@ import { env } from './env.js';
 
 export const adminSessionCookieName = 'craft_pass_admin_session';
 
-export function getAdminSessionCookieOptions(): CookieOptions {
+export function getAdminSessionCookieOptions(secure: boolean): CookieOptions {
   return {
     httpOnly: true,
     sameSite: 'strict',
-    secure: env.nodeEnv === 'production',
+    secure,
     maxAge: env.adminSessionTtlHours * 60 * 60 * 1_000,
     path: '/api/admin',
   };
 }
 
-export function getAdminSessionClearCookieOptions(): CookieOptions {
-  const { maxAge: _maxAge, ...options } = getAdminSessionCookieOptions();
+export function getAdminSessionClearCookieOptions(
+  secure: boolean,
+): CookieOptions {
+  const { maxAge: _maxAge, ...options } =
+    getAdminSessionCookieOptions(secure);
   return options;
 }

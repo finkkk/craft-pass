@@ -236,6 +236,7 @@ export function AdminSettingsPage() {
                       type="number"
                       min={1}
                       max={65535}
+                      disabled={settings.server.locked}
                       value={settings.server.port}
                       onChange={(event) =>
                         setSettings((current) =>

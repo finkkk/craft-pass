@@ -1,5 +1,7 @@
 # Craft Pass
 
+> Linux / Ubuntu 生产环境推荐使用 Docker Compose。完整步骤见 [Linux / Docker Compose 部署文档](docs/docker-deployment.md)。
+
 Craft Pass 是一个面向 Minecraft 服务器的入服审核与白名单管理系统。
 
 玩家需要填写 QQ 号和 Minecraft ID、阅读服务器规则并完成答题。答题通过后申请进入管理员后台，管理员审核通过时可通过 RCON 自动执行白名单命令。

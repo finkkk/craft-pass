@@ -10,6 +10,7 @@ const rawEnvSchema = z.object({
     .enum(['development', 'test', 'production'])
     .default('development'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(47_821),
+  PORT_LOCKED: z.enum(['true', 'false']).default('false'),
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   TRUST_PROXY: z.enum(['true', 'false']).default('false'),
   RATE_LIMIT_WINDOW_MS: z.coerce
@@ -79,6 +80,7 @@ if (
 export const env = Object.freeze({
   nodeEnv: rawEnv.NODE_ENV,
   port: rawEnv.PORT,
+  portLocked: rawEnv.PORT_LOCKED === 'true',
   corsOrigins,
   trustProxy: rawEnv.TRUST_PROXY === 'true',
   databaseUrl: rawEnv.DATABASE_URL,

@@ -132,6 +132,7 @@ export interface AdminSettings {
     port: number;
     activePort: number;
     restartRequired: boolean;
+    locked: boolean;
   };
   site: {
     name: string;

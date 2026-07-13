@@ -12,10 +12,12 @@
     "start": "node scripts/start.mjs",
     "start:server": "npm --prefix backend start",
     "test": "npm --prefix backend test",
+    "check:platform": "node scripts/check-platform.mjs",
     "typecheck": "npm --prefix frontend run typecheck && npm --prefix backend run typecheck",
     "build": "npm --prefix frontend run build && npm --prefix backend run build"
   },
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.12.0",
+    "npm": ">=10"
   }
 }

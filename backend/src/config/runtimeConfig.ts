@@ -136,7 +136,9 @@ export function hasRuntimeConfig() {
 }
 
 export function getEffectiveHttpPort() {
-  return readRuntimeConfig()?.server?.port ?? env.port;
+  return env.portLocked
+    ? env.port
+    : (readRuntimeConfig()?.server?.port ?? env.port);
 }
 
 // A saved port change only takes effect on the next process start.
@@ -217,10 +219,13 @@ export function getAdminRuntimeConfig() {
   return {
     source: storedConfig ? ('runtime' as const) : ('environment' as const),
     server: {
-      port: storedConfig?.server?.port ?? env.port,
+      port: env.portLocked
+        ? env.port
+        : (storedConfig?.server?.port ?? env.port),
       activePort: startupHttpPort,
-      restartRequired:
+      restartRequired: !env.portLocked &&
         (storedConfig?.server?.port ?? env.port) !== startupHttpPort,
+      locked: env.portLocked,
     },
     site: getPublicSiteConfig(),
     application,
@@ -249,7 +254,7 @@ export function updateRuntimeConfig(input: UpdateRuntimeConfigInput) {
   saveRuntimeConfig({
     siteName: input.siteName,
     siteSubtitle: input.siteSubtitle,
-    server: input.server,
+    server: env.portLocked ? { port: env.port } : input.server,
     application: input.application,
     rcon: {
       ...input.rcon,

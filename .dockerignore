@@ -1,0 +1,13 @@
+.git
+.github
+.agents
+.env
+**/.env
+**/node_modules
+**/dist
+**/*.log
+backend/data/*
+!backend/data/.gitkeep
+data/*
+!data/.gitkeep
+

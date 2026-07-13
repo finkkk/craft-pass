@@ -1,0 +1,49 @@
+services:
+  app:
+    build:
+      context: .
+    image: craft-pass:local
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 47821
+      PORT_LOCKED: "true"
+      DATABASE_URL: file:./data/craft-pass.db
+      RUNTIME_DATA_DIR: /app/backend/data
+      TRUST_PROXY: "true"
+    expose:
+      - "47821"
+    volumes:
+      - ./data:/app/backend/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - internal
+
+networks:
+  internal:
+
+volumes:
+  caddy_data:
+  caddy_config:

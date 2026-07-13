@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { rconPasswordSchema } from './rcon.js';
 
 export const updateSettingsSchema = z
   .object({
@@ -23,14 +24,7 @@ export const updateSettingsSchema = z
       enabled: z.boolean(),
       host: z.string().trim().min(1).max(255),
       port: z.number().int().min(1).max(65_535),
-      password: z
-        .string()
-        .max(256)
-        .optional()
-        .refine(
-          (password) => !password || password.length >= 8,
-          'RCON 密码至少需要 8 位',
-        ),
+      password: rconPasswordSchema.optional(),
       timeoutMs: z.number().int().min(500).max(30_000),
       whitelistAddCommand: z
         .string()

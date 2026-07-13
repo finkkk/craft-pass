@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
+import { minimumRconPasswordLength } from '../../constants';
 import {
   AdminApiError,
   factoryResetSystem,
@@ -401,14 +402,16 @@ export function AdminSettingsPage() {
                     <input
                       type="password"
                       autoComplete="new-password"
-                      minLength={rconPassword ? 8 : undefined}
+                      minLength={
+                        rconPassword ? minimumRconPasswordLength : undefined
+                      }
                       maxLength={256}
                       value={rconPassword}
                       onChange={(event) => setRconPassword(event.target.value)}
                       placeholder={
                         settings.rcon.passwordConfigured
                           ? '••••••••••••'
-                          : '输入至少 8 位密码'
+                          : `输入至少 ${minimumRconPasswordLength} 位密码`
                       }
                     />
                   </SettingsField>

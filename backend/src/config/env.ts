@@ -1,6 +1,10 @@
 import { config as loadDotEnv } from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
+import {
+  hasMinimumRconPasswordLength,
+  minimumRconPasswordLength,
+} from '../domain/rconPassword.js';
 
 const envFilePath = fileURLToPath(new URL('../../.env', import.meta.url));
 loadDotEnv({ path: envFilePath, quiet: true });
@@ -65,9 +69,11 @@ if (corsOrigins.length === 0) {
 
 if (
   rawEnv.RCON_ENABLED === 'true' &&
-  rawEnv.RCON_PASSWORD.length < 8
+  !hasMinimumRconPasswordLength(rawEnv.RCON_PASSWORD)
 ) {
-  throw new Error('启用 RCON 时，RCON_PASSWORD 长度不能少于 8 位');
+  throw new Error(
+    `启用 RCON 时，RCON_PASSWORD 长度不能少于 ${minimumRconPasswordLength} 位`,
+  );
 }
 
 if (!rawEnv.RCON_WHITELIST_ADD_COMMAND.includes('{minecraftId}')) {

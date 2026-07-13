@@ -1,5 +1,10 @@
 import { z } from 'zod';
+import {
+  hasMinimumRconPasswordLength,
+  minimumRconPasswordLength,
+} from '../domain/rconPassword.js';
 import { adminPasswordSchema } from './admin.js';
+import { rconPasswordSchema } from './rcon.js';
 
 export const completeSetupSchema = z
   .object({
@@ -18,13 +23,7 @@ export const completeSetupSchema = z
         enabled: z.boolean(),
         host: z.string().trim().min(1).max(255),
         port: z.number().int().min(1).max(65_535),
-        password: z
-          .string()
-          .max(256)
-          .refine(
-            (password) => !password || password.length >= 8,
-            'RCON 密码至少需要 8 位',
-          ),
+        password: rconPasswordSchema,
         timeoutMs: z.number().int().min(500).max(30_000),
         whitelistAddCommand: z
           .string()
@@ -43,11 +42,14 @@ export const completeSetupSchema = z
           .refine((command) => !command.includes('\n'), '命令不能换行'),
       })
       .superRefine((rcon, context) => {
-        if (rcon.enabled && rcon.password.length < 8) {
+        if (
+          rcon.enabled &&
+          !hasMinimumRconPasswordLength(rcon.password)
+        ) {
           context.addIssue({
             code: 'custom',
             path: ['password'],
-            message: '启用 RCON 时密码至少需要 8 位',
+            message: `启用 RCON 时密码至少需要 ${minimumRconPasswordLength} 位`,
           });
         }
       }),

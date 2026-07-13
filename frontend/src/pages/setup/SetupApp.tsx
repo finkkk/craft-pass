@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { completeSetup } from '../../api/setup';
 import type { SetupStatus } from '../../types/setup';
 import { BrandMark } from '../../components/BrandMark';
+import { minimumRconPasswordLength } from '../../constants';
 
 export function SetupApp({
   initialStatus,
@@ -260,11 +261,20 @@ export function SetupApp({
               </SetupField>
             </div>
 
-            <SetupField label="RCON 密码">
+            <SetupField
+              label="RCON 密码"
+              help={
+                form.rconEnabled
+                  ? `至少 ${minimumRconPasswordLength} 位`
+                  : undefined
+              }
+            >
               <input
                 type="password"
                 autoComplete="new-password"
-                minLength={form.rconEnabled ? 8 : undefined}
+                minLength={
+                  form.rconEnabled ? minimumRconPasswordLength : undefined
+                }
                 maxLength={256}
                 value={form.rconPassword}
                 onChange={(event) =>

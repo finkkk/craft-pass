@@ -16,6 +16,10 @@ import {
 import { dirname } from 'node:path';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  hasMinimumRconPasswordLength,
+  minimumRconPasswordLength,
+} from '../domain/rconPassword.js';
 import { env } from './env.js';
 
 const defaultDataDirectory = fileURLToPath(
@@ -247,8 +251,10 @@ export function updateRuntimeConfig(input: UpdateRuntimeConfigInput) {
   const currentRconConfig = getEffectiveRconConfig();
   const password = input.rcon.password || currentRconConfig.password;
 
-  if (input.rcon.enabled && password.length < 8) {
-    throw new Error('启用 RCON 时必须提供至少 8 位密码');
+  if (input.rcon.enabled && !hasMinimumRconPasswordLength(password)) {
+    throw new Error(
+      `启用 RCON 时必须提供至少 ${minimumRconPasswordLength} 位密码`,
+    );
   }
 
   saveRuntimeConfig({

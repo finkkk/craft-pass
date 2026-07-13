@@ -132,6 +132,7 @@ NODE_ENV=production npm run start:server
 | `RCON_ENABLED` | 是否启用 RCON | `false` |
 | `RCON_HOST` | Minecraft RCON 地址 | `host.docker.internal` |
 | `RCON_PORT` | Minecraft RCON 端口 | `25575` |
+| `RCON_PASSWORD` | Minecraft RCON 密码，启用时至少 3 位 | 空 |
 
 > [!CAUTION]
 > 不要提交 `.env`、RCON 密码或数据目录。不要把 RCON 端口直接暴露到公网。

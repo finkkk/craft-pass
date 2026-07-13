@@ -77,6 +77,8 @@ docker compose logs -f app
 
 应用会自动生成加密密钥、初始化 SQLite 数据库并执行迁移。RCON 默认关闭，可在初始化向导或管理后台中启用。
 
+Compose 会先运行一次性的 `data-init` 服务修正挂载目录所有权，再以非 root `node` 用户启动应用，无需手动执行 `chown`。看到 `data-init` 以状态 `Exited (0)` 结束属于正常现象。
+
 > [!IMPORTANT]
 > 默认端口只绑定到 `127.0.0.1:47821`。公网部署请配置 HTTPS 反向代理，完整步骤见 [Docker Compose 生产部署](docs/docker-deployment.md)。
 
@@ -87,6 +89,8 @@ cp .env.example .env
 # 在 .env 中设置 SITE_ADDRESS 和 CORS_ORIGINS
 docker compose --profile caddy up -d --build
 ```
+
+Docker 构建默认限制 Node.js 堆内存并降低原生依赖编译并发，更适合小内存服务器；依赖缓存也会加快后续构建。内存充足时可通过 `NODE_MAX_OLD_SPACE_SIZE` 构建参数提高上限，详见生产部署文档。
 
 ### Windows 本机体验
 

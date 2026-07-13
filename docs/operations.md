@@ -40,6 +40,13 @@ TRUST_PROXY=true
 
 SQLite 适合单实例部署。不要让多个 Craft Pass 进程同时写入同一个数据库文件，也不要把数据库放在不可靠的网络文件系统上。
 
+Docker Compose 部署会通过一次性的 `data-init` 服务修正 bind mount 所有权，应用仍以非 root 用户运行。权限异常时执行：
+
+```bash
+docker compose run --rm data-init
+docker compose up -d app
+```
+
 升级前完整备份 `backend/data`，然后执行：
 
 ```bash

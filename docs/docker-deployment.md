@@ -19,12 +19,14 @@ docker compose ps
 docker compose logs -f app
 ```
 
-默认部署不需要 `.env` 或 OpenSSL：
+默认部署不需要 `.env`，也不需要在宿主机安装 OpenSSL：
 
 - 应用使用 Node.js `crypto.randomBytes(32)` 自动生成密钥；
 - 密钥保存在持久化的 `data/app-secret.key`，容器重建后仍然有效；
 - 首次部署令牌自动生成并显示在日志；
 - SQLite 数据库和 migrations 自动初始化；
+- 镜像内已安装 Prisma 构建和迁移所需的 OpenSSL；
+- `data-init` 会在应用启动前自动修正 `data/` 的所有权；
 - RCON 默认关闭，可在网页初始化向导或后台中配置；
 - 默认地址为 `http://localhost:47821/setup`。
 
@@ -35,6 +37,26 @@ cp .env.example .env
 ```
 
 如果在 `.env` 中填写了真实密码或固定密钥，不要提交该文件。
+
+## 小内存服务器构建
+
+Dockerfile 默认将构建阶段的 Node.js 堆内存限制为 768 MiB，关闭 npm audit/fund 请求，将原生依赖编译并发限制为 1，并使用 BuildKit 缓存复用 npm 下载。它可以降低构建峰值并避免 Node.js 无限制占用内存，但不会为宿主机自动创建 Swap，也不会修改服务器的系统配置。
+
+默认直接构建即可：
+
+```bash
+docker compose build app
+docker compose up -d
+```
+
+如果服务器内存充足，或者未来项目构建确实需要更大的 Node.js 堆，可覆盖默认值：
+
+```bash
+docker compose build --build-arg NODE_MAX_OLD_SPACE_SIZE=1536 app
+docker compose up -d
+```
+
+该参数只影响镜像构建，不限制应用容器运行时内存。如果极低配置服务器仍无法完成构建，应在其他机器或 CI 中构建镜像后再部署，而不是由项目自动改变宿主机的 Swap 设置。
 
 ## 方案 A：复用宿主机 Nginx
 
@@ -113,13 +135,13 @@ docker compose up -d --build
 
 ## 启动流程与初始化
 
-应用容器每次启动都会先执行 `prisma migrate deploy`，然后启动服务。首次运行时，从日志读取一次性部署令牌：
+Compose 启动时会先运行一次性的 `data-init` 服务，再启动应用。应用容器每次启动都会使用镜像内的 `prisma.config.ts` 执行 `prisma migrate deploy`，迁移成功后才启动 HTTP 服务。首次运行时，从日志读取一次性部署令牌：
 
 ```bash
 docker compose logs -f app
 ```
 
-再访问公网域名的 `/setup` 完成初始化。容器内端口固定为 `47821`，避免后台修改端口后与健康检查或反向代理失联。
+`data-init` 显示 `Exited (0)` 表示权限初始化成功，不是服务异常。再访问公网域名的 `/setup` 完成初始化。容器内端口固定为 `47821`，避免后台修改端口后与健康检查或反向代理失联。
 
 ## 更新和日常操作
 
@@ -160,11 +182,28 @@ tar -czf craft-pass-data-$(date +%F).tar.gz data
 docker compose start app
 ```
 
-应用以非 root `node` 用户运行。若日志出现 `EACCES`，确认目录允许容器用户写入；常见 Ubuntu 主机可执行：
+短语法 bind mount 会遮蔽镜像构建阶段设置的目录所有权。为避免首次启动时出现 SQLite `EACCES`，Compose 中的 `data-init` 会以 root 身份修正挂载目录，然后退出；长期运行的 `app` 仍使用非 root `node` 用户。
+
+一般不再需要手动执行 `chown`。如果使用 NFS、rootless Docker 或手工以其他用户修改过 `data/`，可以重新执行权限初始化并启动应用：
 
 ```bash
-sudo chown -R 1000:1000 data
+docker compose run --rm data-init
+docker compose up -d app
 ```
+
+如果初始化服务本身提示宿主机文件系统不允许修改所有权，需要由服务器管理员为 `data/` 授予容器内 `node` 用户对应 UID/GID 的读写权限，或将该 bind mount 改为 Docker named volume。
+
+### 启动失败快速检查
+
+```bash
+docker compose ps -a
+docker compose logs --tail=200 data-init app
+```
+
+- `data-init` 非零退出：宿主机数据目录不允许修改所有权。
+- `The SQLite data path is not writable`：应用用户仍无法写入挂载目录。
+- `Prisma config is missing from the runtime image`：当前镜像过旧或构建不完整，重新执行 `docker compose build --no-cache app`。
+- OpenSSL 或 `datasource.url` 报错：确认已经拉取包含本次 Dockerfile 修复的代码并重新构建镜像。
 
 ## 网络与安全
 

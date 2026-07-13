@@ -28,3 +28,20 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  docker-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build application image
+        run: docker compose build app
+      - name: Start application and wait for health check
+        run: docker compose up -d --wait app
+      - name: Verify HTTP health endpoint
+        run: curl --fail --show-error http://127.0.0.1:47821/api/health
+      - name: Show container logs
+        if: always()
+        run: docker compose logs --no-color app data-init
+      - name: Stop containers
+        if: always()
+        run: docker compose down -v

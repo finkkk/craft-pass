@@ -1,9 +1,23 @@
 services:
+  data-init:
+    image: craft-pass:local
+    pull_policy: never
+    user: root
+    restart: "no"
+    network_mode: none
+    read_only: true
+    entrypoint: ["sh", "-c", "chown -R node:node /app/backend/data"]
+    volumes:
+      - ./data:/app/backend/data
+
   app:
     build:
       context: .
     image: craft-pass:local
     restart: unless-stopped
+    depends_on:
+      data-init:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       PORT: 47821

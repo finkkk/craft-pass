@@ -47,7 +47,25 @@ async function hasExactCase(absolutePath) {
   return true;
 }
 
-async function resolvesExactly(importer, specifier) {
+async function existsIgnoringCase(absolutePath) {
+  const relativePath = path.relative(projectDirectory, absolutePath);
+  let currentDirectory = projectDirectory;
+
+  for (const segment of relativePath.split(path.sep)) {
+    const entries = await readdir(currentDirectory);
+    const match = entries.find(
+      (entry) => entry.toLowerCase() === segment.toLowerCase(),
+    );
+    if (!match) {
+      return false;
+    }
+    currentDirectory = path.join(currentDirectory, match);
+  }
+
+  return true;
+}
+
+async function getResolutionStatus(importer, specifier) {
   const requestedPath = path.resolve(path.dirname(importer), specifier);
   const candidates = [];
 
@@ -66,14 +84,24 @@ async function resolvesExactly(importer, specifier) {
   for (const candidate of candidates) {
     try {
       if (await hasExactCase(candidate)) {
-        return true;
+        return 'exact';
       }
     } catch {
       // The candidate does not exist or one of its parent paths is not a directory.
     }
   }
 
-  return false;
+  for (const candidate of candidates) {
+    try {
+      if (await existsIgnoringCase(candidate)) {
+        return 'case-mismatch';
+      }
+    } catch {
+      // The candidate does not exist. TypeScript or the build will report it.
+    }
+  }
+
+  return 'missing';
 }
 
 for (const root of sourceRoots) {
@@ -88,8 +116,11 @@ for (const root of sourceRoots) {
 
     for (const match of source.matchAll(importPattern)) {
       const specifier = match[1];
-      if (specifier?.startsWith('.') && !(await resolvesExactly(absoluteFile, specifier))) {
-        errors.push(`${relativeFile}: relative import does not match a real path exactly: ${specifier}`);
+      if (
+        specifier?.startsWith('.') &&
+        (await getResolutionStatus(absoluteFile, specifier)) === 'case-mismatch'
+      ) {
+        errors.push(`${relativeFile}: relative import has incorrect filename casing: ${specifier}`);
       }
     }
   }

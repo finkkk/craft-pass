@@ -23,8 +23,8 @@ jobs:
             frontend/package-lock.json
             backend/package-lock.json
       - run: npm run ci:all
+      - run: npm --prefix backend run db:generate
       - run: npm run check:platform
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-

@@ -49,6 +49,9 @@ import {
 import {
   executeRconCommand,
   getRconConnectionStatus,
+  RconCommandBlockedError,
+  RconCustomCommandsDisabledError,
+  RconNotConfiguredError,
 } from '../../services/rconService.js';
 import { getAdminStatistics } from '../../services/adminStatisticsService.js';
 import {
@@ -441,6 +444,24 @@ adminRouter.post('/rcon/command', async (request, response) => {
     const output = await executeRconCommand(result.data.command);
     response.json(output);
   } catch (error) {
+    if (error instanceof RconCommandBlockedError) {
+      throw new HttpError(403, 'RCON_COMMAND_BLOCKED', error.message, {
+        blockedCommand: error.blockedCommand,
+      });
+    }
+
+    if (error instanceof RconCustomCommandsDisabledError) {
+      throw new HttpError(
+        403,
+        'RCON_CUSTOM_COMMANDS_DISABLED',
+        error.message,
+      );
+    }
+
+    if (error instanceof RconNotConfiguredError) {
+      throw new HttpError(409, 'RCON_NOT_CONFIGURED', error.message);
+    }
+
     throw new HttpError(
       503,
       'RCON_COMMAND_FAILED',

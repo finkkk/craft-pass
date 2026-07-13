@@ -117,7 +117,9 @@ export async function updateAdminUiContent(
 }
 
 export function getRconStatus() {
-  return adminRequest<RconStatus>('/api/admin/rcon/status');
+  return adminRequest<RconStatus>('/api/admin/rcon/status', {
+    signal: AbortSignal.timeout(7_000),
+  });
 }
 
 export function executeRconCommand(command: string) {

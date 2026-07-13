@@ -23,10 +23,9 @@ export function AdminRconPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([getAdminSession(), getRconStatus()])
-      .then(([session, loadedStatus]) => {
+    getAdminSession()
+      .then((session) => {
         setAdmin(session.admin);
-        setStatus(loadedStatus);
       })
       .catch((loadError: unknown) => {
         if (loadError instanceof AdminApiError && loadError.status === 401) {
@@ -36,6 +35,8 @@ export function AdminRconPage() {
         setError(getMessage(loadError));
       })
       .finally(() => setLoading(false));
+
+    void refreshStatus();
   }, []);
 
   async function refreshStatus(options: { clearError?: boolean } = {}) {
@@ -67,10 +68,10 @@ export function AdminRconPage() {
       const result = await executeRconCommand(command);
       setHistory((current) => [result, ...current].slice(0, 20));
       setCommand('');
-      await refreshStatus();
+      void refreshStatus();
     } catch (executeError) {
       setError(getMessage(executeError));
-      await refreshStatus({ clearError: false });
+      void refreshStatus({ clearError: false });
     } finally {
       setExecuting(false);
     }

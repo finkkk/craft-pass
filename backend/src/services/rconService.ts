@@ -3,6 +3,7 @@ import { getEffectiveRconConfig } from '../config/runtimeConfig.js';
 import { withTimeout } from '../utils/promiseTimeout.js';
 
 const Rcon = RconModule.default;
+export const maximumRconStatusTimeoutMs = 5_000;
 
 export interface RconWhitelistResult {
   command: string;
@@ -75,7 +76,7 @@ export async function executeRconCommand(
   }
 
   if (!rconConfig.customCommandsEnabled) {
-    throw new Error('自定义 RCON 命令已在系统配置中关闭');
+    throw new RconCustomCommandsDisabledError();
   }
 
   const normalizedCommand = command.trim();
@@ -90,7 +91,7 @@ export async function executeRconCommand(
   );
 
   if (blockedCommand) {
-    throw new Error(`命令被危险命令黑名单拦截：${blockedCommand}`);
+    throw new RconCommandBlockedError(blockedCommand);
   }
 
   const response = await withAuthenticatedRconClient((client) =>
@@ -116,7 +117,10 @@ export async function getRconConnectionStatus(): Promise<RconConnectionStatus> {
   }
 
   try {
-    await withAuthenticatedRconClient(async () => true);
+    await withAuthenticatedRconClient(
+      async () => true,
+      maximumRconStatusTimeoutMs,
+    );
 
     return {
       ...configurationStatus,
@@ -139,6 +143,20 @@ export class RconNotConfiguredError extends Error {
   }
 }
 
+export class RconCustomCommandsDisabledError extends Error {
+  constructor() {
+    super('自定义 RCON 命令已在系统配置中关闭');
+    this.name = 'RconCustomCommandsDisabledError';
+  }
+}
+
+export class RconCommandBlockedError extends Error {
+  constructor(readonly blockedCommand: string) {
+    super(`命令被危险命令黑名单拦截：${blockedCommand}`);
+    this.name = 'RconCommandBlockedError';
+  }
+}
+
 export const rconExecutor = new MinecraftRconExecutor();
 
 export function getRconConfigurationStatus() {
@@ -155,8 +173,10 @@ export function getRconConfigurationStatus() {
 
 async function withAuthenticatedRconClient<T>(
   operation: (client: InstanceType<typeof Rcon>) => Promise<T>,
+  maximumTimeoutMs = Number.POSITIVE_INFINITY,
 ) {
   const rconConfig = getEffectiveRconConfig();
+  const timeoutMs = Math.min(rconConfig.timeoutMs, maximumTimeoutMs);
   const client = new Rcon({
     host: rconConfig.host,
     port: rconConfig.port,
@@ -175,8 +195,8 @@ async function withAuthenticatedRconClient<T>(
 
         return operation(client);
       })(),
-      rconConfig.timeoutMs,
-      `RCON 连接或响应超时（${rconConfig.timeoutMs}ms）`,
+      timeoutMs,
+      `RCON 连接或响应超时（${timeoutMs}ms）`,
       () => client.connection?.destroy(),
     );
   } finally {

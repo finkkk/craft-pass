@@ -1096,8 +1096,9 @@ test('RCON 未启用时自定义命令接口会拒绝执行', async () => {
   });
   const body = await response.json();
 
-  assert.equal(response.status, 503);
-  assert.equal(body.error.code, 'RCON_COMMAND_FAILED');
+  assert.equal(response.status, 409);
+  assert.equal(body.error.code, 'RCON_NOT_CONFIGURED');
+  assert.match(body.error.message, /尚未.*启用|尚未.*配置/);
 });
 
 test('自定义 RCON 命令会被危险命令黑名单拦截', async () => {
@@ -1140,8 +1141,8 @@ test('自定义 RCON 命令会被危险命令黑名单拦截', async () => {
     });
     const body = await response.json();
 
-    assert.equal(response.status, 503);
-    assert.equal(body.error.code, 'RCON_COMMAND_FAILED');
+    assert.equal(response.status, 403);
+    assert.equal(body.error.code, 'RCON_COMMAND_BLOCKED');
     assert.match(body.error.message, /黑名单/);
   } finally {
     await fetch(`${baseUrl}/api/admin/settings`, {

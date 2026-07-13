@@ -98,6 +98,40 @@ CORS_ORIGINS=https://apply.example.com
 
 Nginx 和 Caddy 在本项目中作用相同：终止 HTTPS、接收公网流量，再转发到 Craft Pass。已有 Nginx 时没有必要再运行 Caddy。
 
+### 申请证书前临时使用 HTTP
+
+正式上线仍应使用 HTTPS。如果需要先通过 HTTP 验证域名和反向代理，可以临时使用：
+
+```nginx
+server {
+    listen 80;
+    server_name apply.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:47821;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+此时 `.env` 应使用完全一致的 HTTP 来源：
+
+```dotenv
+CORS_ORIGINS=http://apply.example.com
+```
+
+修改后重新创建应用容器：
+
+```bash
+docker compose up -d --force-recreate app
+```
+
+配置 Certbot/HTTPS 后，把 `CORS_ORIGINS` 改为 `https://apply.example.com`，并再次重新创建容器。不要在同一阶段混用 HTTP 页面与 HTTPS 静态资源。
+
 ## 方案 B：启用内置 Caddy
 
 本机 HTTP 使用内置 Caddy 时不需要 `.env`：

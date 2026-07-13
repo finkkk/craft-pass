@@ -66,6 +66,12 @@ test('健康检查返回服务状态与安全响应头', async () => {
     'http://localhost:5173',
   );
   assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+  assert.doesNotMatch(
+    response.headers.get('content-security-policy') ?? '',
+    /upgrade-insecure-requests/i,
+  );
+  assert.equal(response.headers.get('cross-origin-opener-policy'), null);
+  assert.equal(response.headers.get('origin-agent-cluster'), null);
   assert.match(response.headers.get('x-request-id') ?? '', /^[\da-f-]{36}$/);
 });
 

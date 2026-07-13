@@ -31,7 +31,27 @@ export function createApp() {
   app.set('trust proxy', env.trustProxy);
 
   app.use(requestContext);
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          // All frontend assets use same-origin relative URLs. Helmet's default
+          // upgrade directive breaks temporary HTTP deployments by rewriting
+          // those URLs to HTTPS before a certificate is configured.
+          'upgrade-insecure-requests': null,
+        },
+      },
+    }),
+  );
+  app.use((request, response, next) => {
+    if (!request.secure) {
+      // Browsers ignore these isolation headers on untrustworthy HTTP origins
+      // and emit noisy console errors. Keep them for HTTPS requests.
+      response.removeHeader('Cross-Origin-Opener-Policy');
+      response.removeHeader('Origin-Agent-Cluster');
+    }
+    next();
+  });
   app.use(cors(createCorsOptions(env.corsOrigins)));
   app.use(cookieParser());
   app.use(express.json({ limit: '1mb' }));

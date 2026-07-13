@@ -28,6 +28,17 @@ TRUST_PROXY=true
 
 手工修改 `backend/data/*.json` 后需要重启服务；推荐始终通过管理后台修改配置。
 
+## HTTP 页面加载后白屏
+
+如果尚未配置 HTTPS，请确认 Nginx 传递了实际访问协议：
+
+```nginx
+proxy_set_header Host $host;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+同时让 `CORS_ORIGINS` 与浏览器地址完全一致。临时 HTTP 部署使用 `http://域名`，证书生效后再改为 `https://域名`。修改 Compose 环境变量后需要执行 `docker compose up -d --force-recreate app`，只执行 `restart` 不会加载新的环境变量。
+
 ## HTTP 429 排查
 
 1. 查看响应 JSON 中的 `error.code`，区分全局写限流、登录限流、提交限流和查询限流。

@@ -5,6 +5,12 @@ import { z } from 'zod';
 const envFilePath = fileURLToPath(new URL('../../.env', import.meta.url));
 loadDotEnv({ path: envFilePath, quiet: true });
 
+const optionalSecret = (minimumLength: number) =>
+  z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(minimumLength).optional(),
+  );
+
 const rawEnvSchema = z.object({
   NODE_ENV: z
     .enum(['development', 'test', 'production'])
@@ -36,8 +42,8 @@ const rawEnvSchema = z.object({
     .min(1)
     .default('whitelist add {minecraftId}'),
   RCON_WHITELIST_RELOAD_COMMAND: z.string().default(''),
-  SETUP_TOKEN: z.string().min(16).optional(),
-  APP_SECRET: z.string().min(32).optional(),
+  SETUP_TOKEN: optionalSecret(16),
+  APP_SECRET: optionalSecret(32),
   RUNTIME_DATA_DIR: z.string().min(1).optional(),
 });
 

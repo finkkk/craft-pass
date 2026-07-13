@@ -4,8 +4,6 @@ services:
       context: .
     image: craft-pass:local
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
       NODE_ENV: production
       PORT: 47821
@@ -13,6 +11,19 @@ services:
       DATABASE_URL: file:./data/craft-pass.db
       RUNTIME_DATA_DIR: /app/backend/data
       TRUST_PROXY: "true"
+      CORS_ORIGINS: "${CORS_ORIGINS:-http://localhost:47821,http://127.0.0.1:47821,http://localhost,http://127.0.0.1}"
+      RATE_LIMIT_WINDOW_MS: "${RATE_LIMIT_WINDOW_MS:-60000}"
+      RATE_LIMIT_MAX: "${RATE_LIMIT_MAX:-100}"
+      ADMIN_SESSION_TTL_HOURS: "${ADMIN_SESSION_TTL_HOURS:-8}"
+      RCON_ENABLED: "${RCON_ENABLED:-false}"
+      RCON_HOST: "${RCON_HOST:-host.docker.internal}"
+      RCON_PORT: "${RCON_PORT:-25575}"
+      RCON_PASSWORD: "${RCON_PASSWORD:-}"
+      RCON_TIMEOUT_MS: "${RCON_TIMEOUT_MS:-5000}"
+      RCON_WHITELIST_ADD_COMMAND: "${RCON_WHITELIST_ADD_COMMAND:-whitelist add {minecraftId}}"
+      RCON_WHITELIST_RELOAD_COMMAND: "${RCON_WHITELIST_RELOAD_COMMAND:-}"
+      APP_SECRET: "${APP_SECRET:-}"
+      SETUP_TOKEN: "${SETUP_TOKEN:-}"
     expose:
       - "47821"
     ports:

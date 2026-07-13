@@ -70,49 +70,40 @@ Ubuntu 服务器需要：
 
 不需要在宿主机安装 Node.js、npm 或 SQLite。反向代理可复用已有 Nginx，也可以启用 Compose 中的可选 Caddy 服务。
 
-### 2. 获取代码和创建配置
+### 2. 零配置启动
 
 ```bash
 git clone https://github.com/finkkk/craft-pass.git
 cd craft-pass
-cp .env.example .env
-```
-
-编辑 `.env`，正式部署至少修改以下项目：
-
-```dotenv
-CORS_ORIGINS=https://apply.example.com
-APP_SECRET=请替换为至少32位的随机字符串
-
-RCON_ENABLED=false
-RCON_HOST=host.docker.internal
-RCON_PORT=25575
-RCON_PASSWORD=请替换为真实RCON密码
-```
-
-生成随机密钥：
-
-```bash
-openssl rand -base64 48
-```
-
-本机直接访问应用端口测试时使用：
-
-```dotenv
-APP_PORT=47821
-CORS_ORIGINS=http://localhost:47821
-```
-
-> [!CAUTION]
-> `.env` 包含密钥，不能提交到 Git。`.env.example` 只能保存示例值。
-
-### 3A. 已有 Nginx：只启动应用容器
-
-```bash
 docker compose up -d --build
 docker compose ps
 docker compose logs -f app
 ```
+
+不需要创建 `.env`，也不需要运行 OpenSSL：
+
+- 应用会自动生成高强度密钥并保存到持久化的 `data/app-secret.key`；
+- 首次部署令牌会自动生成并显示在应用日志；
+- SQLite 数据库和 migrations 会自动初始化；
+- RCON 默认关闭，可以在网页初始化向导或后台中配置；
+- 默认可直接访问 `http://localhost:47821/setup`。
+
+只有使用公网域名、修改宿主机端口或希望预填 RCON 时，才需要可选配置：
+
+```bash
+cp .env.example .env
+```
+
+例如使用公网域名：
+
+```dotenv
+CORS_ORIGINS=https://apply.example.com
+```
+
+> [!CAUTION]
+> 如果选择在 `.env` 中填写 RCON 密码或固定密钥，不要把该文件提交到 Git。默认自动密钥保存在持久化数据目录中，无需写入 `.env`。
+
+### 3A. 已有 Nginx：只启动应用容器
 
 应用只绑定宿主机环回地址 `127.0.0.1:47821`，不会直接向公网开放。宿主机 Nginx 可以使用以下站点配置：
 
@@ -148,14 +139,20 @@ sudo systemctl reload nginx
 
 ### 3B. 没有反向代理：启用内置 Caddy
 
-在 `.env` 中额外设置：
+本机 HTTP 使用 Caddy 时不需要 `.env`，直接运行：
+
+```bash
+docker compose --profile caddy up -d --build
+```
+
+使用公网域名时再创建 `.env` 并设置：
 
 ```dotenv
 SITE_ADDRESS=apply.example.com
 CORS_ORIGINS=https://apply.example.com
 ```
 
-启动 Caddy profile：
+然后重新创建服务：
 
 ```bash
 docker compose --profile caddy up -d --build
@@ -265,12 +262,13 @@ cd craft-pass
 nvm install
 nvm use
 
-cp backend/.env.example backend/.env
 npm run ci:all
 npm run check:platform
 npm run deploy
 NODE_ENV=production npm run start:server
 ```
+
+直接运行 Node.js 同样不强制要求配置文件；需要覆盖端口、CORS 或预填 RCON 时，再复制 `backend/.env.example` 为 `backend/.env`。
 
 生产环境不能依靠 SSH 窗口长期保持进程。请使用 systemd、PM2 或其他进程管理器，并配置 Nginx/Caddy HTTPS 反向代理。
 

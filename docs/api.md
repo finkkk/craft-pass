@@ -65,12 +65,12 @@ Content-Type: application/json
 
 - `VALIDATION_ERROR`：字段格式错误、漏答或包含未知题目。
 - `AGREEMENT_VERSION_OUTDATED`：协议已经更新，需要重新阅读。
-- `IDENTITY_CONFLICT`：QQ、Minecraft ID 或两者已被任意历史申请占用；`details` 会指出发生冲突的字段。
+- `IDENTITY_CONFLICT`：QQ、Minecraft ID 或两者已被通过答题的申请占用；`details` 会指出发生冲突的字段。仅有答题失败记录时允许重新提交。
 - `APPLICATION_SUBMISSIONS_DISABLED`：后台暂时关闭了新申请入口。
 - `APPLICATION_RATE_LIMIT_ACTIVE`：同 IP 在后台配置的时间窗口内提交次数过多。
 - `APPLICATION_RATE_LIMIT_EXCEEDED`：15 分钟内提交超过 10 次。
 
-答题结果低于后台配置的合格分数仍会创建记录，状态为 `quiz_failed`；响应只返回分数，不返回正确答案。
+答题结果低于后台配置的合格分数仍会创建记录，状态为 `quiz_failed`；响应只返回分数，不返回正确答案。该记录不占用 QQ 或 Minecraft ID，玩家可以使用相同身份重新考试。
 
 ## 查询申请进度
 
@@ -171,7 +171,7 @@ RCON 状态接口会在已启用时尝试认证连接，并返回 `connected`、
 
 系统配置接口用于修改站点名称、申请入口与提交频率策略、RCON 参数、自定义 RCON 命令开关和危险命令黑名单。读取配置时只返回 `passwordConfigured`，绝不返回 RCON 密码；更新时省略或留空密码表示保持原值。当前后台中站点名称与 Logo 位于“界面定制”，RCON 地址、密码和命令模板位于“系统配置”。
 
-提交频率策略中的“提交统计时段”只用于统计短时间内同 IP 的提交次数，不是玩家答题限时。QQ 与 Minecraft ID 使用全状态唯一绑定，不再使用次数限制。
+提交频率策略中的“提交统计时段”只用于统计短时间内同 IP 的提交次数，不是玩家答题限时。QQ 与 Minecraft ID 在通过答题后唯一绑定；答题失败记录不占用身份。提交频率仍可能受到同一 IP 短时间提交上限限制。
 
 恢复出厂设置接口需要传入确认文本：
 
@@ -184,3 +184,5 @@ RCON 状态接口会在已启用时尝试认证连接，并返回 `connected`、
 成功后会删除申请记录、管理员账号、会话、操作日志、RCON 记录、运行配置、题库配置和自定义 Logo，并返回新的 `setupToken`。系统随后回到首次部署状态，前端会跳转到 `/setup` 重新初始化。
 
 修改申请记录只允许更新 QQ 号和 Minecraft ID，并继续执行与玩家申请相同的格式校验。修改已通过记录不会自动执行 RCON 命令。删除申请会同时删除其 RCON 尝试记录，但管理员日志会保留被删除记录的快照。
+
+`POST /api/admin/applications` 可由管理员填写 QQ、Minecraft ID 和 0 至 100 的整数分数手工创建记录，系统按当前合格线自动归入待审核或答题失败。`GET /api/admin/applications` 支持 `status=all` 和 `search` 参数，搜索范围为 QQ 与 Minecraft ID。

@@ -189,7 +189,7 @@ export function AdminSettingsPage() {
                 tone={
                   settings.application.submissionsEnabled ? 'green' : 'red'
                 }
-                detail="QQ 与 Minecraft ID 全状态唯一"
+                detail="通过答题后 QQ 与 Minecraft ID 唯一；答题失败可重考"
               />
               <StatusCard
                 label="HTTP 服务"
@@ -295,7 +295,7 @@ export function AdminSettingsPage() {
                     <p>02</p>
                     <h2>申请入口与 IP 频率限制</h2>
                   </div>
-                  <span>QQ 与 Minecraft ID 会全状态查重；这里额外限制同一 IP 的短时间提交。</span>
+                  <span>通过答题的申请会占用 QQ 与 Minecraft ID；答题失败不占用，可重新考试。这里额外限制同一 IP 的短时间提交。</span>
                 </header>
                 <div className="settings-fields">
                   <label className="setup-toggle">

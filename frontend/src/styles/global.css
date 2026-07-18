@@ -3105,6 +3105,70 @@ button:disabled {
   background: var(--green-pale);
 }
 
+.admin-record-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 0 24px 18px;
+}
+
+.admin-record-toolbar input {
+  flex: 1 1 260px;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid #c9ccc5;
+  background: white;
+}
+
+.admin-record-toolbar .primary-button {
+  margin-left: auto;
+}
+
+.manual-record-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+  margin: 0 24px 18px;
+  padding: 16px;
+  border: 1px solid #cdd9cf;
+  background: #f1f6f1;
+}
+
+.manual-record-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.66rem;
+  font-weight: 750;
+}
+
+.manual-record-form input {
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 11px;
+  border: 1px solid #c9ccc5;
+  background: white;
+}
+
+.manual-record-form > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.62rem;
+}
+
+@media (max-width: 840px) {
+  .manual-record-form {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-record-toolbar .primary-button {
+    margin-left: 0;
+  }
+}
+
 .status-tabs {
   display: flex;
   gap: 0;

@@ -4,7 +4,11 @@ import {
   RconAttemptStatus,
 } from '../generated/prisma/enums.js';
 import { prisma } from '../lib/prisma.js';
-import type { UpdateAdminApplicationBody } from '../schemas/admin.js';
+import { getContentConfig } from '../config/contentConfig.js';
+import type {
+  CreateAdminApplicationBody,
+  UpdateAdminApplicationBody,
+} from '../schemas/admin.js';
 
 const statusMap = {
   quiz_failed: ApplicationStatus.QUIZ_FAILED,
@@ -25,11 +29,21 @@ export function parsePublicApplicationStatus(value: unknown) {
 }
 
 export async function listAdminApplications(
-  status: PublicApplicationStatus,
+  status: PublicApplicationStatus | null,
+  search = '',
 ) {
+  const normalizedSearch = search.trim().toLowerCase();
   return prisma.application.findMany({
     where: {
-      status: statusMap[status],
+      ...(status ? { status: statusMap[status] } : {}),
+      ...(normalizedSearch
+        ? {
+            OR: [
+              { qqNumber: { contains: normalizedSearch } },
+              { minecraftIdNormalized: { contains: normalizedSearch } },
+            ],
+          }
+        : {}),
     },
     orderBy: {
       createdAt: 'desc',
@@ -120,6 +134,81 @@ interface AdminRecordOperationMetadata {
   ipAddress?: string;
 }
 
+export async function createAdminApplication(
+  input: CreateAdminApplicationBody,
+  adminId: string,
+  metadata: AdminRecordOperationMetadata,
+) {
+  const content = getContentConfig();
+  const passedQuiz = input.score >= content.quiz.passingScore;
+  const status = passedQuiz
+    ? ApplicationStatus.PENDING_REVIEW
+    : ApplicationStatus.QUIZ_FAILED;
+  const minecraftIdNormalized = input.minecraftId.toLowerCase();
+
+  return prisma.$transaction(async (transaction) => {
+    if (passedQuiz) {
+      const conflicts = await transaction.application.findMany({
+        where: {
+          status: { not: ApplicationStatus.QUIZ_FAILED },
+          OR: [{ qqNumber: input.qqNumber }, { minecraftIdNormalized }],
+        },
+        select: { qqNumber: true, minecraftIdNormalized: true },
+        take: 2,
+      });
+
+      if (conflicts.length > 0) {
+        throwIdentityConflict(conflicts, input.qqNumber, minecraftIdNormalized);
+      }
+    }
+
+    let application;
+    try {
+      application = await transaction.application.create({
+        data: {
+          qqNumber: input.qqNumber,
+          minecraftId: input.minecraftId,
+          minecraftIdNormalized,
+          score: input.score,
+          passedQuiz,
+          status,
+          agreementVersion: content.agreement.version,
+          signedAt: new Date(),
+          ipAddress: metadata.ipAddress,
+          answersJson: { version: 1, answers: [], source: 'admin_manual' },
+          identityLocked: passedQuiz,
+        },
+      });
+    } catch (error) {
+      if (isUniqueConstraintError(error)) {
+        throw new ApplicationRecordOperationError(
+          'IDENTITY_CONFLICT',
+          'QQ 号或 Minecraft ID 已被其他有效申请占用',
+        );
+      }
+      throw error;
+    }
+
+    await transaction.adminLog.create({
+      data: {
+        adminId,
+        action: AdminAction.CREATE_APPLICATION,
+        targetApplicationId: application.id,
+        ipAddress: metadata.ipAddress,
+        detail: {
+          source: 'admin_manual',
+          qqNumber: application.qqNumber,
+          minecraftId: application.minecraftId,
+          score: application.score,
+          status: application.status,
+        },
+      },
+    });
+
+    return application;
+  });
+}
+
 export async function updateAdminApplication(
   applicationId: string,
   input: UpdateAdminApplicationBody,
@@ -158,6 +247,7 @@ export async function updateAdminApplication(
     const conflicts = await transaction.application.findMany({
       where: {
         id: { not: applicationId },
+        status: { not: ApplicationStatus.QUIZ_FAILED },
         OR: [
           { qqNumber: input.qqNumber },
           { minecraftIdNormalized },
@@ -170,22 +260,8 @@ export async function updateAdminApplication(
       take: 2,
     });
 
-    if (conflicts.length > 0) {
-      const qqNumberDuplicate = conflicts.some(
-        (item) => item.qqNumber === input.qqNumber,
-      );
-      const minecraftIdDuplicate = conflicts.some(
-        (item) => item.minecraftIdNormalized === minecraftIdNormalized,
-      );
-      const label = qqNumberDuplicate && minecraftIdDuplicate
-        ? 'QQ 号和 Minecraft ID'
-        : qqNumberDuplicate
-          ? 'QQ 号'
-          : 'Minecraft ID';
-      throw new ApplicationRecordOperationError(
-        'IDENTITY_CONFLICT',
-        `${label}已被其他申请记录占用`,
-      );
+    if (current.status !== ApplicationStatus.QUIZ_FAILED && conflicts.length > 0) {
+      throwIdentityConflict(conflicts, input.qqNumber, minecraftIdNormalized);
     }
 
     const updated = await transaction.application.update({
@@ -194,7 +270,7 @@ export async function updateAdminApplication(
         qqNumber: input.qqNumber,
         minecraftId: input.minecraftId,
         minecraftIdNormalized,
-        identityLocked: true,
+        identityLocked: current.status !== ApplicationStatus.QUIZ_FAILED,
       },
     });
 
@@ -297,4 +373,33 @@ export class ApplicationRecordOperationError extends Error {
     super(message);
     this.name = 'ApplicationRecordOperationError';
   }
+}
+
+function throwIdentityConflict(
+  conflicts: Array<{ qqNumber: string; minecraftIdNormalized: string }>,
+  qqNumber: string,
+  minecraftIdNormalized: string,
+): never {
+  const qqNumberDuplicate = conflicts.some((item) => item.qqNumber === qqNumber);
+  const minecraftIdDuplicate = conflicts.some(
+    (item) => item.minecraftIdNormalized === minecraftIdNormalized,
+  );
+  const label = qqNumberDuplicate && minecraftIdDuplicate
+    ? 'QQ 号和 Minecraft ID'
+    : qqNumberDuplicate
+      ? 'QQ 号'
+      : 'Minecraft ID';
+  throw new ApplicationRecordOperationError(
+    'IDENTITY_CONFLICT',
+    `${label}已被其他有效申请占用`,
+  );
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === 'P2002',
+  );
 }

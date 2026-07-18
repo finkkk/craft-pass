@@ -30,6 +30,14 @@ export const updateAdminApplicationSchema = z
   })
   .strict();
 
+export const createAdminApplicationSchema = updateAdminApplicationSchema.extend({
+  score: z.number().int('分数必须是整数').min(0).max(100),
+});
+
 export type UpdateAdminApplicationBody = z.infer<
   typeof updateAdminApplicationSchema
+>;
+
+export type CreateAdminApplicationBody = z.infer<
+  typeof createAdminApplicationSchema
 >;

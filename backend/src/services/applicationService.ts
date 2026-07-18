@@ -48,6 +48,7 @@ export async function createApplication(
     return await prisma.$transaction(async (transaction) => {
       const conflicts = await transaction.application.findMany({
       where: {
+        status: { not: ApplicationStatus.QUIZ_FAILED },
         OR: [{ qqNumber: input.qqNumber }, { minecraftIdNormalized }],
       },
       select: {
@@ -78,7 +79,7 @@ export async function createApplication(
           ipAddress: metadata.ipAddress,
           userAgent: metadata.userAgent,
           answersJson,
-          identityLocked: true,
+          identityLocked: quizResult.passed,
         },
         select: {
           id: true,
@@ -132,6 +133,7 @@ export async function assertIdentityAvailable(
   const minecraftIdNormalized = minecraftId.toLowerCase();
   const conflicts = await prisma.application.findMany({
     where: {
+      status: { not: ApplicationStatus.QUIZ_FAILED },
       OR: [{ qqNumber }, { minecraftIdNormalized }],
     },
     select: {

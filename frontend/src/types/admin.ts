@@ -5,6 +5,8 @@ export type ApplicationStatus =
   | 'whitelisted'
   | 'rcon_failed';
 
+export type ApplicationListStatus = ApplicationStatus | 'all';
+
 export interface AdminIdentity {
   id: string;
   username: string;

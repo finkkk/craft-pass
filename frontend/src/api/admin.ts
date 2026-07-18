@@ -9,6 +9,7 @@ import type {
   AdminContentConfig,
   AdminSettings,
   ApplicationStatus,
+  ApplicationListStatus,
   RconCommandResult,
   RconStatus,
   ReviewActionResult,
@@ -177,11 +178,33 @@ export async function getAdminVersionStatus() {
   return value;
 }
 
-export async function getAdminApplications(status: ApplicationStatus) {
+export async function getAdminApplications(
+  status: ApplicationListStatus,
+  search = '',
+) {
+  const query = new URLSearchParams({ status });
+  if (search.trim()) {
+    query.set('search', search.trim());
+  }
   const response = await adminRequest<{
     applications: AdminApplicationRow[];
-  }>(`/api/admin/applications?status=${status}`);
+  }>(`/api/admin/applications?${query.toString()}`);
   return response.applications;
+}
+
+export async function createAdminApplication(input: {
+  qqNumber: string;
+  minecraftId: string;
+  score: number;
+}) {
+  const response = await adminRequest<{
+    application: AdminApplicationDetail;
+  }>('/api/admin/applications', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  return response.application;
 }
 
 export async function getAdminApplication(applicationId: string) {

@@ -13,6 +13,7 @@ import { adminLoginRateLimiter } from '../../middleware/security.js';
 import { prisma } from '../../lib/prisma.js';
 import {
   adminLoginSchema,
+  createAdminApplicationSchema,
   updateAdminApplicationSchema,
 } from '../../schemas/admin.js';
 import {
@@ -32,6 +33,7 @@ import {
   getAdminDashboardSummary,
   listAdminApplications,
   parsePublicApplicationStatus,
+  createAdminApplication,
   updateAdminApplication,
   deleteAdminApplication,
   ApplicationRecordOperationError,
@@ -471,11 +473,12 @@ adminRouter.post('/rcon/command', async (request, response) => {
 });
 
 adminRouter.get('/applications', async (request, response) => {
-  const status = parsePublicApplicationStatus(
-    request.query.status ?? 'pending_review',
-  );
+  const rawStatus = request.query.status ?? 'pending_review';
+  const status = rawStatus === 'all'
+    ? null
+    : parsePublicApplicationStatus(rawStatus);
 
-  if (!status) {
+  if (rawStatus !== 'all' && !status) {
     throw new HttpError(
       400,
       'INVALID_APPLICATION_STATUS',
@@ -483,15 +486,49 @@ adminRouter.get('/applications', async (request, response) => {
     );
   }
 
-  const applications = await listAdminApplications(status);
+  const search = typeof request.query.search === 'string'
+    ? request.query.search.trim().slice(0, 64)
+    : '';
+  const applications = await listAdminApplications(status, search);
 
   response.json({
-    status,
+    status: status ?? 'all',
     applications: applications.map((application) => ({
       ...application,
       status: toPublicApplicationStatus(application.status),
     })),
   });
+});
+
+adminRouter.post('/applications', async (request, response) => {
+  const result = createAdminApplicationSchema.safeParse(request.body);
+
+  if (!result.success) {
+    throw new HttpError(
+      400,
+      'VALIDATION_ERROR',
+      '手工录入的数据格式不正确',
+      z.flattenError(result.error),
+    );
+  }
+
+  try {
+    const created = await createAdminApplication(
+      result.data,
+      response.locals.admin!.id,
+      { ipAddress: request.ip },
+    );
+    const application = await getAdminApplication(created.id);
+
+    response.status(201).json({
+      application: {
+        ...application!,
+        status: toPublicApplicationStatus(application!.status),
+      },
+    });
+  } catch (error) {
+    throw mapApplicationRecordError(error);
+  }
 });
 
 adminRouter.post('/applications/batch-review', async (request, response) => {

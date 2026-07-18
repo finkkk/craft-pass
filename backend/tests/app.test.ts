@@ -270,7 +270,7 @@ test('旧协议版本申请会被拒绝并返回当前版本', async () => {
   assert.equal(body.error.details.currentVersion, agreement.version);
 });
 
-test('答题失败会写入记录，但不会返回正确答案', async () => {
+test('答题失败会写入记录且不占用身份，玩家可以使用同一 QQ 和 ID 重考', async () => {
   const payload = buildValidApplicationPayload('FailedPlayer');
   payload.answers = buildAnswers(0);
 
@@ -291,15 +291,17 @@ test('答题失败会写入记录，但不会返回正确答案', async () => {
 
   assert.equal(storedApplication?.passedQuiz, false);
   assert.equal(storedApplication?.status, ApplicationStatus.QUIZ_FAILED);
+  assert.equal(storedApplication?.identityLocked, false);
 
-  const duplicateAfterFailure = await postApplication({
-    ...buildValidApplicationPayload('FailRetry'),
-    qqNumber: payload.qqNumber,
+  const retryAfterFailure = await postApplication({
+    ...payload,
+    answers: buildAnswers(quizQuestions.length),
   });
-  const duplicateBody = await duplicateAfterFailure.json();
-  assert.equal(duplicateAfterFailure.status, 409);
-  assert.equal(duplicateBody.error.code, 'IDENTITY_CONFLICT');
-  assert.equal(duplicateBody.error.details.qqNumberDuplicate, true);
+  const retryBody = await retryAfterFailure.json();
+  assert.equal(retryAfterFailure.status, 201);
+  assert.equal(retryBody.status, 'pending_review');
+  assert.equal(retryBody.passed, true);
+  await prisma.application.delete({ where: { id: retryBody.applicationId } });
 });
 
 test('满分申请进入待审核，QQ 与 Minecraft ID 均不能重复绑定', async () => {
@@ -486,6 +488,72 @@ test('登录后可以读取概览、待审核列表与申请详情', async () =>
     detailBody.application.answersJson.answers[0].questionPrompt,
     quizQuestions[0]?.prompt,
   );
+});
+
+test('管理员可以手工录入成绩并按 Minecraft ID 或 QQ 搜索', async () => {
+  const headers = {
+    Cookie: adminCookie,
+    'Content-Type': 'application/json',
+  };
+  const input = {
+    qqNumber: '188888888',
+    minecraftId: 'ManualSearch',
+    score: 40,
+  };
+
+  const failedResponse = await fetch(`${baseUrl}/api/admin/applications`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input),
+  });
+  const failedBody = await failedResponse.json();
+  assert.equal(failedResponse.status, 201);
+  assert.equal(failedBody.application.status, 'quiz_failed');
+  assert.equal(failedBody.application.identityLocked, false);
+
+  const passedResponse = await fetch(`${baseUrl}/api/admin/applications`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ...input, score: 95 }),
+  });
+  const passedBody = await passedResponse.json();
+  assert.equal(passedResponse.status, 201);
+  assert.equal(passedBody.application.status, 'pending_review');
+
+  for (const search of ['manualsea', input.qqNumber]) {
+    const searchResponse = await fetch(
+      `${baseUrl}/api/admin/applications?status=all&search=${search}`,
+      { headers },
+    );
+    const searchBody = await searchResponse.json();
+    assert.equal(searchResponse.status, 200);
+    assert.equal(searchBody.applications.length, 2);
+    assert.ok(
+      searchBody.applications.every(
+        (application: { minecraftId: string }) =>
+          application.minecraftId === input.minecraftId,
+      ),
+    );
+  }
+
+  const duplicateResponse = await fetch(`${baseUrl}/api/admin/applications`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ ...input, score: 100 }),
+  });
+  assert.equal(duplicateResponse.status, 409);
+
+  const createLog = await prisma.adminLog.findFirst({
+    where: {
+      action: 'CREATE_APPLICATION',
+      targetApplicationId: passedBody.application.id,
+    },
+  });
+  assert.ok(createLog);
+
+  await prisma.application.deleteMany({
+    where: { id: { in: [failedBody.application.id, passedBody.application.id] } },
+  });
 });
 
 test('管理员可以更新站点与 RCON 配置且密码不会回显', async () => {

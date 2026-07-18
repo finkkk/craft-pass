@@ -3,6 +3,7 @@ import {
   AdminApiError,
   approveAdminApplication,
   batchReviewAdminApplications,
+  createAdminApplication,
   deleteAdminApplication,
   getAdminApplication,
   getAdminApplications,
@@ -19,6 +20,7 @@ import type {
   AdminApplicationRow,
   AdminIdentity,
   AdminSummary,
+  ApplicationListStatus,
   ApplicationStatus,
   RconStatus,
 } from '../../types/admin';
@@ -43,7 +45,8 @@ const AdminRconPage = lazy(() =>
   import('./AdminRconPage').then((module) => ({ default: module.AdminRconPage })),
 );
 
-const statusTabs: Array<{ id: ApplicationStatus; label: string }> = [
+const statusTabs: Array<{ id: ApplicationListStatus; label: string }> = [
+  { id: 'all', label: '全部记录' },
   { id: 'pending_review', label: '待审核' },
   { id: 'whitelisted', label: '已通过' },
   { id: 'rejected', label: '已拒绝' },
@@ -178,7 +181,7 @@ function AdminDashboardPage() {
   const [summary, setSummary] = useState<AdminSummary | null>(null);
   const [rconStatus, setRconStatus] = useState<RconStatus | null>(null);
   const [status, setStatus] =
-    useState<ApplicationStatus>('pending_review');
+    useState<ApplicationListStatus>('pending_review');
   const [applications, setApplications] = useState<AdminApplicationRow[]>([]);
   const [selected, setSelected] =
     useState<AdminApplicationDetail | null>(null);
@@ -188,6 +191,12 @@ function AdminDashboardPage() {
   const [batchRejecting, setBatchRejecting] = useState(false);
   const [batchReason, setBatchReason] = useState('');
   const [batchMessage, setBatchMessage] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [appliedSearch, setAppliedSearch] = useState('');
+  const [manualRecordOpen, setManualRecordOpen] = useState(false);
+  const [manualQqNumber, setManualQqNumber] = useState('');
+  const [manualMinecraftId, setManualMinecraftId] = useState('');
+  const [manualScore, setManualScore] = useState('100');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -198,9 +207,9 @@ function AdminDashboardPage() {
     if (admin) {
       setSelectedIds(new Set());
       setBatchRejecting(false);
-      void loadApplications(status);
+      void loadApplications(status, appliedSearch);
     }
-  }, [admin, status]);
+  }, [admin, status, appliedSearch]);
 
   async function loadDashboard() {
     try {
@@ -237,11 +246,14 @@ function AdminDashboardPage() {
     }
   }
 
-  async function loadApplications(nextStatus: ApplicationStatus) {
+  async function loadApplications(
+    nextStatus: ApplicationListStatus,
+    search = appliedSearch,
+  ) {
     setLoading(true);
     setError(null);
     try {
-      setApplications(await getAdminApplications(nextStatus));
+      setApplications(await getAdminApplications(nextStatus, search));
     } catch (loadError) {
       if (loadError instanceof AdminApiError && loadError.status === 401) {
         window.location.href = '/admin/login';
@@ -294,7 +306,7 @@ function AdminDashboardPage() {
 
       const [nextSummary, nextApplications, nextSelected] = await Promise.all([
         getAdminSummary(),
-        getAdminApplications(status),
+        getAdminApplications(status, appliedSearch),
         action === 'reject'
           ? Promise.resolve(null)
           : getAdminApplication(selectedId),
@@ -307,7 +319,7 @@ function AdminDashboardPage() {
       setError(getMessage(actionError));
       await Promise.all([
         getAdminSummary().then(setSummary),
-        getAdminApplications(status).then(setApplications),
+        getAdminApplications(status, appliedSearch).then(setApplications),
         selected ? getAdminApplication(selected.id).then(setSelected) : undefined,
       ]).catch(() => undefined);
       void refreshRconStatus();
@@ -329,7 +341,7 @@ function AdminDashboardPage() {
     try {
       const updated = await updateAdminApplication(selected.id, input);
       setSelected(updated);
-      await loadApplications(status);
+      await loadApplications(status, appliedSearch);
       return true;
     } catch (updateError) {
       setError(getMessage(updateError));
@@ -356,7 +368,7 @@ function AdminDashboardPage() {
       setSelected(null);
       const [nextSummary, nextApplications] = await Promise.all([
         getAdminSummary(),
-        getAdminApplications(status),
+        getAdminApplications(status, appliedSearch),
       ]);
       setSummary(nextSummary);
       setApplications(nextApplications);
@@ -405,7 +417,7 @@ function AdminDashboardPage() {
       });
       const [nextSummary, nextApplications] = await Promise.all([
         getAdminSummary(),
-        getAdminApplications(status),
+        getAdminApplications(status, appliedSearch),
       ]);
       setSummary(nextSummary);
       setApplications(nextApplications);
@@ -423,6 +435,43 @@ function AdminDashboardPage() {
       void refreshRconStatus();
     } catch (batchError) {
       setError(getMessage(batchError));
+    } finally {
+      setActionLoading(false);
+    }
+  }
+
+  async function handleManualCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setActionLoading(true);
+    setError(null);
+    setBatchMessage(null);
+
+    try {
+      const minecraftId = manualMinecraftId.trim();
+      const created = await createAdminApplication({
+        qqNumber: manualQqNumber.trim(),
+        minecraftId,
+        score: Number(manualScore),
+      });
+      const [nextSummary, nextApplications] = await Promise.all([
+        getAdminSummary(),
+        getAdminApplications('all', minecraftId),
+      ]);
+      setSummary(nextSummary);
+      setApplications(nextApplications);
+      setSelected(created);
+      setStatus('all');
+      setSearchInput(minecraftId);
+      setAppliedSearch(minecraftId);
+      setManualQqNumber('');
+      setManualMinecraftId('');
+      setManualScore('100');
+      setManualRecordOpen(false);
+      setBatchMessage(
+        `已手工录入 ${created.minecraftId}，当前状态：${statusLabel(created.status)}。`,
+      );
+    } catch (createError) {
+      setError(getMessage(createError));
     } finally {
       setActionLoading(false);
     }
@@ -474,6 +523,84 @@ function AdminDashboardPage() {
             </div>
             <span>{applications.length} 条</span>
           </div>
+
+          <form
+            className="admin-record-toolbar"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setAppliedSearch(searchInput.trim());
+            }}
+          >
+            <input
+              value={searchInput}
+              maxLength={64}
+              placeholder="搜索 Minecraft ID 或 QQ 号"
+              aria-label="搜索 Minecraft ID 或 QQ 号"
+              onChange={(event) => setSearchInput(event.target.value)}
+            />
+            <button className="secondary-button" type="submit">搜索</button>
+            {appliedSearch ? (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => {
+                  setSearchInput('');
+                  setAppliedSearch('');
+                }}
+              >
+                清除
+              </button>
+            ) : null}
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => setManualRecordOpen((open) => !open)}
+            >
+              {manualRecordOpen ? '收起录入' : '手工录入数据'}
+            </button>
+          </form>
+
+          {manualRecordOpen ? (
+            <form className="manual-record-form" onSubmit={(event) => void handleManualCreate(event)}>
+              <label>
+                Minecraft ID
+                <input
+                  required
+                  minLength={3}
+                  maxLength={16}
+                  pattern="[A-Za-z0-9_]{3,16}"
+                  value={manualMinecraftId}
+                  onChange={(event) => setManualMinecraftId(event.target.value)}
+                />
+              </label>
+              <label>
+                QQ 号
+                <input
+                  required
+                  inputMode="numeric"
+                  pattern="[1-9][0-9]{4,11}"
+                  value={manualQqNumber}
+                  onChange={(event) => setManualQqNumber(event.target.value)}
+                />
+              </label>
+              <label>
+                分数
+                <input
+                  required
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={manualScore}
+                  onChange={(event) => setManualScore(event.target.value)}
+                />
+              </label>
+              <button className="primary-button" disabled={actionLoading} type="submit">
+                {actionLoading ? '正在录入…' : '确认增加记录'}
+              </button>
+              <p>达到当前合格线会进入待审核；未达到则记为答题失败且不占用身份。</p>
+            </form>
+          ) : null}
 
           <div className="status-tabs">
             {statusTabs.map((tab) => (
@@ -565,7 +692,7 @@ function AdminDashboardPage() {
                     <td>
                       <span
                         className={`score-pill ${
-                          application.score >= 80 ? 'pass' : ''
+                          application.status !== 'quiz_failed' ? 'pass' : ''
                         }`}
                       >
                         {application.score}
